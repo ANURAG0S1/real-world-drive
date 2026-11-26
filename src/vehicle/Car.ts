@@ -33,7 +33,7 @@ export class Car {
   private telemetry: Telemetry;
 
   constructor(
-    private readonly spec: VehicleSpec,
+    readonly spec: VehicleSpec,
     private readonly world: RAPIER.World,
     rapier: typeof RAPIER,
     scene: THREE.Scene,
@@ -42,10 +42,9 @@ export class Car {
     scene.add(this.model.root);
     this.rpm = spec.idleRpm;
 
-    const [hw, , hl] = spec.halfExtents;
+    const [hw, hy, hl] = spec.halfExtents;
     const bodyDesc = rapier.RigidBodyDesc.dynamic().setTranslation(0, 2, 0).setCanSleep(false).setLinearDamping(0.02).setAngularDamping(0.6);
     this.body = world.createRigidBody(bodyDesc);
-    const hy = 0.38;
     const m = spec.massKg;
     // Box inertia, with a low centre of mass for stable cornering.
     const inertia = {
@@ -54,8 +53,8 @@ export class Car {
       z: (m / 12) * ((hw * 2) ** 2 + (hy * 2) ** 2),
     };
     const colDesc = rapier.ColliderDesc.cuboid(hw, hy, hl)
-      .setTranslation(0, 0.2, 0)
-      .setMassProperties(m, { x: 0, y: -0.12, z: 0.05 }, inertia, { x: 0, y: 0, z: 0, w: 1 })
+      .setTranslation(0, hy * 0.5, 0)
+      .setMassProperties(m, { x: 0, y: spec.comY, z: 0.05 }, inertia, { x: 0, y: 0, z: 0, w: 1 })
       .setFriction(0.3)
       .setRestitution(0.1);
     this.chassisCollider = world.createCollider(colDesc, this.body);
@@ -83,7 +82,9 @@ export class Car {
     });
 
     // Body visual sits so its ground plane matches the wheel contact at rest.
-    this.model.body.position.y = CONNECT_Y - spec.suspensionRest - spec.wheelRadius + 0.07;
+    // Static sag: the ray-cast suspension force is stiffness * compression * mass, shared by four wheels.
+    const sag = 9.81 / (4 * spec.suspensionStiffness);
+    this.model.body.position.y = CONNECT_Y - spec.suspensionRest - spec.wheelRadius + sag;
     this.telemetry = { speedKmh: 0, rpm: this.rpm, gear: '1', throttle: 0, braking: false, slip: 0 };
   }
 
@@ -164,8 +165,8 @@ export class Car {
       this.controller.setWheelBrake(i, brake * (i < 2 ? 0.6 : 0.4));
     }
     if (input.handbrake) {
-      this.controller.setWheelBrake(2, s.brakeForce * 0.8);
-      this.controller.setWheelBrake(3, s.brakeForce * 0.8);
+      this.controller.setWheelBrake(2, s.brakeForce * 0.45);
+      this.controller.setWheelBrake(3, s.brakeForce * 0.45);
     }
     // Rolling resistance and engine braking when coasting.
     if (input.throttle === 0 && input.brake === 0 && !input.handbrake) {
@@ -187,7 +188,7 @@ export class Car {
     // Forces accumulate in Rapier until reset, so rebuild them every step.
     this.body.resetForces(false);
     if (sp > 0.1) {
-      const k = 0.42 * sp;
+      const k = s.drag * sp;
       this.body.addForce({ x: -lv.x * k, y: -lv.y * k, z: -lv.z * k }, true);
       // Downforce keeps the car planted at speed.
       this.body.addForce({ x: 0, y: -sp * sp * 1.2, z: 0 }, true);
@@ -226,6 +227,7 @@ export class Car {
       const pivot = this.model.wheels[i];
       pivot.position.set(conn.x, conn.y - susp, conn.z);
       pivot.rotation.set(0, this.controller.wheelSteering(i) ?? 0, 0);
+      if (i === 0) this.model.setSteering(this.controller.wheelSteering(0) ?? 0);
       const spinner = this.model.wheelSpinner(i);
       spinner.rotation.x = this.controller.wheelRotation(i) ?? 0;
     }

@@ -38,10 +38,10 @@
         <h2 id="place-name">Greater Noida</h2>
         <p id="place-detail" class="muted"></p>
         <p id="place-coords" class="mono"></p>
-        <div class="car-pick">
-          <span class="label">Vehicle</span>
-          <div class="car-chip"><span class="swatch"></span><span id="car-name">Vantage GT</span><span class="muted">· RWD coupe</span></div>
-        </div>
+        <fieldset class="car-pick">
+          <legend class="label">Vehicle</legend>
+          <div id="car-list" class="car-list"></div>
+        </fieldset>
         <button id="drive-btn" class="btn btn-primary" type="button">Drive here</button>
       </div>
 
@@ -77,7 +77,7 @@
 
       <div class="minimap-wrap panel">
         <canvas id="minimap" width="440" height="440"></canvas>
-        <span class="minimap-n">N</span>
+        <span id="minimap-n" class="minimap-n">N</span>
       </div>
 
       <div class="gauge panel">

@@ -89,7 +89,17 @@ gearbox, braking, reverse and handbrake, headlights and brake lights, three
 cameras, speedometer, RPM, gear, compass, coordinates, mini-map, full map,
 engine sound, pause menu and four graphics presets.
 
-Not yet: terrain elevation and real bridge heights, more vehicles (sedan, SUV),
-traffic AI, weather and day/night, destination routing, game modes, mobile
+Vehicles (pick one on the globe screen, defined in `src/vehicle/specs.ts`):
+
+| Car | Drive | 0-100 km/h | 100-0 braking |
+| --- | --- | --- | --- |
+| Vantage GT sports coupe | RWD | 5.2 s | 34 m |
+| Meridian S family sedan | FWD | 9.5 s | 37 m |
+| Ridgeback 4x4 SUV | AWD | 8.7 s | 36 m |
+
+Each has its own body shape, suspension, gearbox and engine note, a right-hand-drive
+cockpit with a working steering wheel, gear-shift and brake sounds.
+
+Not yet: terrain elevation and real bridge heights, traffic AI, weather and day/night, destination routing, game modes, mobile
 controls tuning. The code is organised so each of these is an addition in its
 own folder rather than a rewrite.

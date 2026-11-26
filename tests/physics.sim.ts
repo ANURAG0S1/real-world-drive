@@ -6,17 +6,17 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Car } from '../src/vehicle/Car';
-import { SPORTS_CAR } from '../src/vehicle/specs';
+import { VEHICLES, type VehicleSpec } from '../src/vehicle/specs';
 import type { DriveInput } from '../src/vehicle/input';
 
 const DT = 1 / 60;
 
-async function main(): Promise<void> {
-  await RAPIER.init();
+function testVehicle(spec: VehicleSpec): void {
+  console.log(`\n== ${spec.name} (${spec.kind}) ==`);
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
   world.timestep = DT;
   world.createCollider(RAPIER.ColliderDesc.cuboid(20000, 1, 20000).setTranslation(0, -1, 0).setFriction(1));
-  const car = new Car(SPORTS_CAR, world, RAPIER, new THREE.Scene());
+  const car = new Car(spec, world, RAPIER, new THREE.Scene());
   car.place(0, 1, 0, 0);
   const run = (input: DriveInput, seconds: number, each?: (t: number) => void): void => {
     for (let i = 0; i < Math.round(seconds / DT); i++) {
@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     t = tt;
     const tel = car.getTelemetry();
     if (t100 < 0 && tel.speedKmh >= 100) t100 = tt;
-    if (Math.abs(tt - Math.round(tt)) < DT / 2 && Math.round(tt) % 4 === 0) console.log(`t=${tt.toFixed(0)}s ${tel.speedKmh.toFixed(1)} km/h gear ${tel.gear} rpm ${tel.rpm.toFixed(0)}`);
+    if (Math.abs(tt - Math.round(tt)) < DT / 2 && Math.round(tt) % 10 === 0) console.log(`t=${tt.toFixed(0)}s ${tel.speedKmh.toFixed(1)} km/h gear ${tel.gear} rpm ${tel.rpm.toFixed(0)}`);
   });
   console.log(`0-100: ${t100.toFixed(2)} s, after ${t.toFixed(0)} s: ${car.getTelemetry().speedKmh.toFixed(1)} km/h`);
 
@@ -71,6 +71,11 @@ async function main(): Promise<void> {
   // Handbrake slide.
   run({ ...idle, steer: 1, handbrake: true }, 1.5);
   console.log(`after handbrake: speed ${car.getTelemetry().speedKmh.toFixed(0)}, slip ${car.getTelemetry().slip.toFixed(2)}`);
+}
+
+async function main(): Promise<void> {
+  await RAPIER.init();
+  for (const v of VEHICLES) testVehicle(v);
 }
 
 void main();

@@ -69,6 +69,7 @@ export class DriveSession {
   async start(): Promise<{ onRoad: boolean; roadName: string | null }> {
     await this.world.update({ x: 0, z: 0 });
     this.car = new Car(this.opts.vehicle, this.physics, this.rapier, this.scene);
+    this.chase.cockpitEye.copy(this.car.model.driverEye).add(this.car.model.body.position);
     const spawn = this.world.nearestRoadPoint({ x: 0, z: 0 }, 1500);
     const heading = spawn ? spawn.heading : (this.opts.headingDeg * Math.PI) / 180;
     const p = spawn ? spawn.point : { x: 0, z: 0 };

@@ -14,9 +14,11 @@ export class ChaseCamera {
   private readonly look = new THREE.Vector3();
   private initialised = false;
   private orbit = 0;
+  /** Driver eye point in the car root's local frame; set per vehicle. */
+  readonly cockpitEye = new THREE.Vector3(-0.36, 0.55, 0.05);
 
   constructor(aspect: number) {
-    this.camera = new THREE.PerspectiveCamera(62, aspect, 0.1, 6000);
+    this.camera = new THREE.PerspectiveCamera(62, aspect, 0.05, 6000);
   }
 
   cycle(): CameraMode {
@@ -47,9 +49,11 @@ export class ChaseCamera {
     let stiffness: number;
 
     if (this.mode === 'cockpit') {
-      const eye = new THREE.Vector3(0.36, 0.55, 0.05).applyQuaternion(target.quaternion).add(carPos);
+      const eye = this.cockpitEye.clone().applyQuaternion(target.quaternion).add(carPos);
       this.camera.position.copy(eye);
-      const ahead = new THREE.Vector3(0.36, 0.45, 20).applyQuaternion(target.quaternion).add(carPos);
+      const ahead = new THREE.Vector3(this.cockpitEye.x, this.cockpitEye.y - 0.25, this.cockpitEye.z + 20)
+        .applyQuaternion(target.quaternion)
+        .add(carPos);
       this.camera.lookAt(ahead);
       this.camera.fov = 70;
       this.camera.updateProjectionMatrix();

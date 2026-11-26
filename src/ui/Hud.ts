@@ -29,12 +29,22 @@ export class Hud {
   private readonly rpmEl = $('rpm');
   private readonly rpmArc = $('rpm-arc') as unknown as SVGPathElement;
   private readonly strip = $('compass-strip');
+  private readonly northEl = $('minimap-n');
   private lastSpeed = -1;
   private lastGear = '';
+  private redline = 7000;
+  private maxRpm = 7000;
 
-  constructor(private readonly redline: number) {
+  constructor() {
+    this.buildCompass();
+  }
+
+  /** Rebuilds the RPM dial for a vehicle's redline. */
+  configure(redline: number): void {
+    this.redline = redline;
+    this.lastSpeed = -1;
+    this.lastGear = '';
     ($('rpm-track') as unknown as SVGPathElement).setAttribute('d', arcPath(0, 1));
-    ($('rpm-red') as unknown as SVGPathElement).setAttribute('d', arcPath(0.86, 1));
     const ticks = $('gauge-ticks') as unknown as SVGGElement;
     const maxK = Math.ceil(redline / 1000);
     const ns = 'http://www.w3.org/2000/svg';
@@ -60,10 +70,8 @@ export class Hud {
       ticks.appendChild(label);
     }
     this.maxRpm = maxK * 1000;
-    this.buildCompass();
+    ($('rpm-red') as unknown as SVGPathElement).setAttribute('d', arcPath((redline * 0.9) / this.maxRpm, 1));
   }
-
-  private readonly maxRpm: number;
 
   private buildCompass(): void {
     const names: Record<number, string> = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
@@ -98,5 +106,9 @@ export class Hud {
     deg = ((deg % 360) + 360) % 360;
     const px = (360 + deg) * 2 - 140 + 15;
     this.strip.style.transform = `translateX(${-px}px)`;
+    // Heading-up mini-map: the N marker orbits the rim opposite the turn.
+    const a = -headingRad;
+    this.northEl.style.left = `${50 + Math.sin(a) * 42}%`;
+    this.northEl.style.top = `${50 - Math.cos(a) * 42}%`;
   }
 }

@@ -14,7 +14,7 @@ import { $, formatCoords, toast } from './ui/dom';
 import { Hud } from './ui/Hud';
 import { drawRoadMap } from './ui/MapRenderer';
 import { InputController, type ActionKey } from './vehicle/input';
-import { SPORTS_CAR } from './vehicle/specs';
+import { VEHICLES, type VehicleSpec } from './vehicle/specs';
 
 type Mode = 'globe' | 'loading' | 'driving' | 'paused' | 'map';
 
@@ -35,7 +35,9 @@ class App {
   private readonly geocoder = new Geocoder();
   private readonly input = new InputController();
   private readonly audio = new EngineAudio();
-  private readonly hud = new Hud(SPORTS_CAR.redlineRpm);
+  private readonly hud = new Hud();
+  private vehicle: VehicleSpec = VEHICLES[0];
+  private lastGear = '';
   private readonly minimap = ($('minimap') as HTMLCanvasElement).getContext('2d');
   private readonly bigmap = $('bigmap-canvas') as HTMLCanvasElement;
   session: DriveSession | null = null;
@@ -67,6 +69,7 @@ class App {
     window.addEventListener('resize', () => this.resize());
     this.resize();
     this.renderResults(presetResults(''), false);
+    this.renderCarPicker();
     this.select(this.presetSelection(DEFAULT_LOCATION), false);
     $('pause-quality').textContent = `Graphics: ${this.quality[0].toUpperCase()}${this.quality.slice(1)}`;
     requestAnimationFrame((t) => this.frame(t));
@@ -192,6 +195,39 @@ class App {
     }
   }
 
+  private renderCarPicker(): void {
+    const list = $('car-list');
+    list.replaceChildren();
+    for (const v of VEHICLES) {
+      const label = document.createElement('label');
+      label.className = 'car-option';
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'vehicle';
+      input.id = `car-${v.id}`;
+      input.value = v.id;
+      input.checked = v.id === this.vehicle.id;
+      input.addEventListener('change', () => {
+        if (input.checked) this.vehicle = v;
+      });
+      const swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = `#${v.paint.toString(16).padStart(6, '0')}`;
+      const name = document.createElement('span');
+      name.className = 'c-name';
+      name.textContent = v.name;
+      const kind = document.createElement('span');
+      kind.className = 'c-kind';
+      kind.textContent = v.kind;
+      const stat = document.createElement('span');
+      stat.className = 'c-stat';
+      stat.textContent = `${v.topSpeedKmh} km/h\n${(v.massKg / 1000).toFixed(2)} t`;
+      stat.style.whiteSpace = 'pre';
+      label.append(input, swatch, name, kind, stat);
+      list.appendChild(label);
+    }
+  }
+
   private select(s: Selection, focus = true): void {
     this.selection = s;
     $('place-card').hidden = false;
@@ -228,7 +264,7 @@ class App {
     const ready = (async (): Promise<{ session: DriveSession; onRoad: boolean; roadName: string | null }> => {
       await this.ensurePackFor(sel.position);
       const session = new DriveSession(
-        { origin: sel.position, headingDeg: sel.preset?.spawnHeadingDeg ?? 0, vehicle: SPORTS_CAR, quality: QUALITY_PROFILES[this.quality] },
+        { origin: sel.position, headingDeg: sel.preset?.spawnHeadingDeg ?? 0, vehicle: this.vehicle, quality: QUALITY_PROFILES[this.quality] },
         RAPIER,
         this.renderer,
         this.source,
@@ -261,6 +297,9 @@ class App {
             return;
           }
           this.session = session;
+          this.hud.configure(session.car.spec.redlineRpm);
+          this.audio.configure(session.car.spec.firingPerRev);
+          this.lastGear = '';
           this.setMode('driving');
           const st = session.world.status();
           if (!onRoad) {
@@ -389,7 +428,9 @@ class App {
     const t = s.car.getTelemetry();
     const heading = s.car.heading();
     this.hud.update(t, heading);
-    this.audio.update(t.rpm, t.throttle, t.speedKmh, t.slip);
+    this.audio.update(t.rpm, t.throttle, t.speedKmh, t.slip, t.braking);
+    if (this.lastGear && t.gear !== this.lastGear && t.gear !== 'R' && this.lastGear !== 'R') this.audio.shift();
+    this.lastGear = t.gear;
 
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
