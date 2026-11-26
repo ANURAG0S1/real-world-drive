@@ -55,6 +55,9 @@ const HAIR = [0x141210, 0x1e1712, 0x2b1f17, 0x3d2a1c, 0x8f8a84];
 const SHOES = [0x1a1a1a, 0x4a3324, 0xe8e8e8, 0x6b6b6b, 0x2a3a5a];
 const BAGS = [0x22252b, 0x7a2f2f, 0x2f4f7a, 0x5a4a2a, 0x3f6f4f];
 
+/** Parts that cast shadows: torso, hips, skirt, limbs and head. */
+const SHADOW_PARTS = /^(torso|pelvis|lower|thigh|shin|upperArm|head)/;
+
 const pick = <T,>(list: readonly T[], r: () => number): T => list[Math.floor(r() * list.length)];
 
 /** A capsule hanging down from its top end, as limbs hang from a joint. */
@@ -220,8 +223,8 @@ export class PedestrianRig {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       // Instances move every frame, so the cached bounding sphere would cull them wrongly.
       mesh.frustumCulled = false;
-      // Tiny face details are not worth a shadow pass.
-      mesh.castShadow = castShadow && part.name !== 'face';
+      // Only the big masses cast shadows; small details are not worth a shadow pass each.
+      mesh.castShadow = castShadow && SHADOW_PARTS.test(part.name);
       const white = new THREE.Color(0xffffff);
       for (let i = 0; i < capacity; i++) {
         mesh.setMatrixAt(i, PedestrianRig.ZERO);

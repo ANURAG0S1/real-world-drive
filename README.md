@@ -68,8 +68,10 @@ The look comes from a post-processing chain (`src/render/PostFX.ts`): the scene 
 | --- | --- | --- |
 | Low | none | sky only |
 | Medium | bloom and grade | sky only |
-| High | AO, bloom and grade | live, every 8 frames |
-| Ultra | AO, bloom and grade | live, every 3 frames |
+| High | half-resolution AO, bloom and grade | sky only |
+| Ultra | full-resolution AO, bloom and grade | live, every 6 frames |
+
+Resolution is dynamic: `src/core/FrameGovernor.ts` watches frame times and lowers the render resolution (down to 55% of the preset) when the frame rate drops below about 50 fps, then raises it again when there is headroom.
 
 ## Pedestrians
 

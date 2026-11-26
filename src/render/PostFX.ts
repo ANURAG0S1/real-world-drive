@@ -100,20 +100,23 @@ export class PostFX {
     private readonly scene: THREE.Scene,
     private readonly camera: THREE.PerspectiveCamera,
     readonly level: PostFXLevel,
+    /** Ambient occlusion resolution relative to the screen; half is ~4x cheaper and looks nearly the same. */
+    private readonly aoScale = 1,
   ) {
     if (level === 'off') return;
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     const target = new THREE.WebGLRenderTarget(size.x, size.y, {
       type: THREE.HalfFloatType,
-      samples: renderer.capabilities.isWebGL2 ? 4 : 0,
+      samples: level === 'full' ? 4 : 2,
     });
     const composer = new EffectComposer(renderer, target);
     composer.addPass(new RenderPass(scene, camera));
 
     if (level === 'full') {
-      const gtao = new GTAOPass(scene, camera, size.x, size.y);
-      gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.6, thickness: 1.2, scale: 1.0, samples: 12, distanceFallOff: 1 });
-      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
+      const gtao = new GTAOPass(scene, camera, Math.round(size.x * aoScale), Math.round(size.y * aoScale));
+      const samples = aoScale < 1 ? 8 : 12;
+      gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.6, thickness: 1.2, scale: 1.0, samples, distanceFallOff: 1 });
+      gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples });
       gtao.blendIntensity = 0.85;
       composer.addPass(gtao);
       this.gtao = gtao;
@@ -152,8 +155,9 @@ export class PostFX {
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(width, height);
     const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
-    // The composer already resized every pass (bloom halves its own buffers).
+    // The composer already resized every pass (bloom halves its own buffers); AO runs reduced.
     this.grade?.uniforms.resolution.value.set(size.x, size.y);
+    this.gtao?.setSize(Math.round(size.x * this.aoScale), Math.round(size.y * this.aoScale));
   }
 
   dispose(): void {

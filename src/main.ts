@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { EngineAudio } from './audio/EngineAudio';
 import { DEFAULT_LOCATION, LOCATIONS, type LocationPreset } from './config/locations';
 import { DriveSession } from './core/DriveSession';
+import { FrameGovernor } from './core/FrameGovernor';
 import { loadQuality, QUALITIES, QUALITY_PROFILES, saveQuality, type Quality } from './core/settings';
 import { ChunkSource } from './data/chunkSource';
 import { Geocoder, presetResults, type PlaceResult } from './data/geocoder';
@@ -37,6 +38,7 @@ class App {
   private readonly input = new InputController();
   private readonly audio = new EngineAudio();
   private readonly hud = new Hud();
+  private readonly governor = new FrameGovernor();
   private vehicle: VehicleSpec = VEHICLES[0];
   private lastGear = '';
   private readonly minimap = ($('minimap') as HTMLCanvasElement).getContext('2d');
@@ -57,8 +59,9 @@ class App {
 
   constructor() {
     const profile = QUALITY_PROFILES[this.quality];
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: profile.antialias, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.pixelRatioCap));
+    // The driving view anti-aliases inside its own MSAA buffer, so the canvas only needs it without post-processing.
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: profile.antialias && profile.postfx === 'off', powerPreference: 'high-performance' });
+    this.renderer.setPixelRatio(this.pixelRatio());
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.85;
     this.renderer.shadowMap.enabled = true;
@@ -106,8 +109,8 @@ class App {
     $('pause-quality').addEventListener('click', () => {
       this.quality = QUALITIES[(QUALITIES.indexOf(this.quality) + 1) % QUALITIES.length];
       saveQuality(this.quality);
-      const prof = QUALITY_PROFILES[this.quality];
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, prof.pixelRatioCap));
+      this.governor.reset();
+      this.renderer.setPixelRatio(this.pixelRatio());
       this.resize();
       $('pause-quality').textContent = `Graphics: ${this.quality[0].toUpperCase()}${this.quality.slice(1)}`;
       toast('Resolution changed now. Shadows and draw distance apply on the next drive.');
@@ -391,6 +394,12 @@ class App {
 
   // ---------- Frame loop ----------
 
+  /** Preset pixel-ratio cap, scaled down by the frame governor while the GPU is struggling. */
+  private pixelRatio(): number {
+    const cap = QUALITY_PROFILES[this.quality].pixelRatioCap;
+    return Math.max(0.5, Math.min(window.devicePixelRatio, cap) * this.governor.scale);
+  }
+
   private resize(): void {
     const w = this.canvas.clientWidth;
     const h = this.canvas.clientHeight;
@@ -408,7 +417,8 @@ class App {
   }
 
   private frame(now: number): void {
-    const dt = Math.min(0.1, (now - this.lastTime) / 1000);
+    const rawDt = (now - this.lastTime) / 1000;
+    const dt = Math.min(0.1, rawDt);
     this.lastTime = now;
     this.frames++;
     try {
@@ -417,6 +427,10 @@ class App {
         s.update(dt, this.input.read(dt), this.mode === 'driving');
         s.render(this.renderer);
         this.updateHud(s, dt);
+        if (this.mode === 'driving' && this.governor.sample(rawDt)) {
+          this.renderer.setPixelRatio(this.pixelRatio());
+          this.resize();
+        }
       } else {
         this.globe.update(dt);
         this.globe.render(this.renderer);

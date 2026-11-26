@@ -83,7 +83,7 @@ export class DriveSession {
     );
     this.scene.add(this.pedestrians.root);
     this.chase = new ChaseCamera(aspect);
-    this.postfx = new PostFX(renderer, this.scene, this.chase.camera, opts.quality.postfx);
+    this.postfx = new PostFX(renderer, this.scene, this.chase.camera, opts.quality.postfx, opts.quality.aoScale);
   }
 
   /** Loads the first chunk and spawns the car on the nearest real road. */
