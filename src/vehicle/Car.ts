@@ -72,7 +72,7 @@ export class Car {
       [-halfTrack, -halfBase], // RR
     ];
     positions.forEach(([x, z], i) => {
-      this.controller.addWheel({ x, y: CONNECT_Y, z }, { x: 0, y: -1, z: 0 }, { x: 1, y: 0, z: 0 }, spec.suspensionRest, spec.wheelRadius);
+      this.controller.addWheel({ x, y: CONNECT_Y, z }, { x: 0, y: -1, z: 0 }, { x: -1, y: 0, z: 0 }, spec.suspensionRest, spec.wheelRadius);
       this.controller.setWheelSuspensionStiffness(i, spec.suspensionStiffness);
       this.controller.setWheelSuspensionCompression(i, spec.suspensionDamping * 0.8);
       this.controller.setWheelSuspensionRelaxation(i, spec.suspensionDamping);
