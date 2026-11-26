@@ -6,13 +6,14 @@ export interface DriveInput {
   handbrake: boolean;
 }
 
-export type ActionKey = 'camera' | 'headlights' | 'reset' | 'map' | 'pause';
+export type ActionKey = 'camera' | 'headlights' | 'reset' | 'map' | 'pause' | 'enter';
 
 const ACTION_CODES: Readonly<Record<string, ActionKey>> = {
   KeyC: 'camera',
   KeyH: 'headlights',
   KeyR: 'reset',
   KeyM: 'map',
+  KeyE: 'enter',
   Escape: 'pause',
 };
 
@@ -52,6 +53,15 @@ export class InputController {
   }
 
   private mouseFire = false;
+
+  /** Walking controls: W/S forward and back, A/D turn, Shift run, Space jump. */
+  readFoot(): { forward: number; turn: number; sprint: boolean; jump: boolean } {
+    if (!this.enabled) return { forward: 0, turn: 0, sprint: false, jump: false };
+    const k = (c: string): boolean => this.keys.has(c);
+    const fwd = (k('KeyW') || k('ArrowUp') || this.touch.throttle ? 1 : 0) - (k('KeyS') || k('ArrowDown') || this.touch.brake ? 1 : 0);
+    const turn = (k('KeyA') || k('ArrowLeft') || this.touch.left ? 1 : 0) - (k('KeyD') || k('ArrowRight') || this.touch.right ? 1 : 0);
+    return { forward: fwd, turn, sprint: k('ShiftLeft') || k('ShiftRight'), jump: k('Space') || this.touch.handbrake };
+  }
 
   /** True while the fire control (F or left mouse) is held. */
   firing(): boolean {

@@ -51,6 +51,7 @@ interface Vehicle {
   health: number;
   readonly body: RAPIER.RigidBody;
   wheelSpin: number;
+  color: number;
   /** Seconds spent (nearly) stopped, to clear rare gridlocks out of the player's sight. */
   stuck: number;
 }
@@ -114,6 +115,7 @@ export class Traffic {
   private candidateTimer = 0;
   private readonly rand: () => number;
   private age = 0;
+  private others: readonly PlayerState[] = [];
 
   // Scratch.
   private readonly m = new THREE.Matrix4();
@@ -188,6 +190,7 @@ export class Traffic {
         health: 100,
         body,
         wheelSpin: 0,
+        color: 0xffffff,
         stuck: 0,
       };
       this.byCollider.set(col.handle, veh);
@@ -234,8 +237,33 @@ export class Traffic {
     return v?.active ? { x: v.x, y: v.y, z: v.z, health: v.health } : null;
   }
 
-  /** Advance one fixed physics step; call before `physics.step()`. */
-  step(dt: number, player: PlayerState): void {
+  /** Nearest active, intact car within `radius` of a point, as a slot index, or -1. */
+  nearest(x: number, z: number, radius: number): number {
+    let best = -1;
+    let bestD = radius;
+    this.vehicles.forEach((v, i) => {
+      if (!v.active || v.health <= 0) return;
+      const d = Math.hypot(v.x - x, v.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  }
+
+  /** Removes a car from traffic (the player is taking it) and returns its pose and look. */
+  take(index: number): { x: number; y: number; z: number; heading: number; kind: string; color: number } | null {
+    const v = this.vehicles[index];
+    if (!v?.active) return null;
+    const out = { x: v.x, y: v.y, z: v.z, heading: v.heading, kind: v.type.kind, color: v.color };
+    this.park(v);
+    return out;
+  }
+
+  /** Advance one fixed physics step; call before `physics.step()`. `others` are extra obstacles such as parked player cars. */
+  step(dt: number, player: PlayerState, others: readonly PlayerState[] = []): void {
+    this.others = others;
     this.age += dt;
     this.candidateTimer -= dt;
     if (this.candidateTimer <= 0) {
@@ -406,7 +434,8 @@ export class Traffic {
       const col = v.body.collider(0);
       col.setHalfExtents({ x: v.type.half[0], y: v.type.half[1], z: v.type.half[2] });
       const idx = this.vehicles.indexOf(v);
-      const color = new THREE.Color(v.type.colors[Math.floor(r() * v.type.colors.length)]);
+      v.color = v.type.colors[Math.floor(r() * v.type.colors.length)];
+      const color = new THREE.Color(v.color);
       const paint = this.meshes[typeIndex][0];
       paint.setColorAt(idx, color);
       if (paint.instanceColor) paint.instanceColor.needsUpdate = true;
@@ -556,6 +585,7 @@ export class Traffic {
       consider(o.x, o.z, o.heading, o.type.half[2], o.type.half[0]);
     }
     consider(player.x, player.z, player.heading, player.halfLength, player.halfWidth);
+    for (const o of this.others) consider(o.x, o.z, o.heading, o.halfLength, o.halfWidth);
     return best;
   }
 

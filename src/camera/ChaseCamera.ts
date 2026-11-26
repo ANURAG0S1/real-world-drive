@@ -37,6 +37,29 @@ export class ChaseCamera {
     this.initialised = false;
   }
 
+  /** Over-the-shoulder follow for the player on foot (feet position, facing yaw about +Y). */
+  updateOnFoot(feet: THREE.Vector3, yaw: number, dt: number): void {
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    // Right of the facing direction is (-cos yaw, 0, sin yaw).
+    const desiredPos = new THREE.Vector3(feet.x - fx * 3.4 - fz * 0.55, feet.y + 2.0, feet.z - fz * 3.4 + fx * 0.55);
+    const desiredLook = new THREE.Vector3(feet.x + fx * 6 - fz * 0.35, feet.y + 1.45, feet.z + fz * 6 + fx * 0.35);
+    this.camera.fov = 62;
+    this.camera.updateProjectionMatrix();
+    if (!this.initialised) {
+      this.pos.copy(desiredPos);
+      this.look.copy(desiredLook);
+      this.initialised = true;
+    } else {
+      const k = 1 - Math.exp(-9 * dt);
+      this.pos.lerp(desiredPos, k);
+      this.look.lerp(desiredLook, Math.min(1, k * 1.6));
+    }
+    this.pos.y = Math.max(this.pos.y, feet.y + 0.5);
+    this.camera.position.copy(this.pos);
+    this.camera.lookAt(this.look);
+  }
+
   update(target: THREE.Object3D, speedMs: number, dt: number): void {
     const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(target.quaternion);
     fwd.y = 0;

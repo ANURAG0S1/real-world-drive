@@ -46,6 +46,8 @@ export interface Pose {
   /** Lean back from upright, 0 to pi/2 (lying on the back). */
   readonly fall: number;
   readonly knocked: boolean;
+  /** Right arm raised forward, holding a pistol. */
+  readonly aiming?: boolean;
 }
 
 const SHIRTS = [0xf2f2ee, 0x9cc3e6, 0x23345c, 0x7a1f2b, 0xe8b931, 0x2f7d4f, 0x1c1c1e, 0x8a8f96, 0xe0662b, 0xd977a5, 0x5b3f8c, 0x3aa6a0, 0xc23b3b, 0xf0d9b5];
@@ -189,6 +191,10 @@ function jointAngles(pose: Pose, a: Appearance, out: Record<Joint, number>): voi
   out.spine = g > 1.2 ? 0.16 : 0.03 * g;
   out.neck = -out.spine * 0.6;
   if (a.bag) out.spine += 0.04;
+  if (pose.aiming && !pose.knocked) {
+    out.shoulderR = -1.5;
+    out.elbowR = -0.08;
+  }
   if (pose.knocked) {
     // Arms thrown up, legs loose.
     out.shoulderL = -2.4;

@@ -26,6 +26,7 @@ Other scripts:
 | `npm run typecheck` | TypeScript only |
 | `npm run test:physics` | Headless handling test: 0-100, top speed, braking, cornering |
 | `npm run test:peds` | Headless crowd test: people stay on sidewalks, dodge, fall and get up |
+| `npm run test:avatar` | Headless on-foot test: walk, run, wall stop, kerb step, jump, turn |
 
 No API keys are needed. All map data comes from free OpenStreetMap services.
 
@@ -38,6 +39,8 @@ No API keys are needed. All map data comes from free OpenStreetMap services.
 | A D / ← → | Steer |
 | Space | Handbrake |
 | F or left click | Fire (aim with the camera crosshair) |
+| E | Get out of the car, or get into the nearest car (yours or any traffic car) |
+| On foot: W/S, A/D, Shift, Space | Walk, turn, run, jump |
 | C | Cycle camera (chase, cockpit, cinematic) |
 | H | Headlights |
 | R | Reset the car onto the nearest road |

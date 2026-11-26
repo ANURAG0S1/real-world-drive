@@ -307,6 +307,11 @@ class App {
           session.pedestrians.onHit = (kmh) => this.audio.bump(kmh);
           session.onTrafficCrash = (kmh) => this.audio.bump(kmh * 1.5);
           session.weapon.onShot = () => this.audio.gunshot();
+          session.onVehicleChanged = (car) => {
+            this.hud.configure(car.spec.redlineRpm);
+            this.audio.configure(car.spec.firingPerRev);
+            toast(`Got into a ${car.spec.kind.toLowerCase()}`, 'info', 1400);
+          };
           session.weapon.onDryFire = () => this.audio.dryFire();
           session.weapon.onExplosion = () => this.audio.explosion();
           this.lastGear = '';
@@ -390,6 +395,12 @@ class App {
           $('btn-lights').classList.toggle('on', on);
         }
         break;
+      case 'enter':
+        if (this.mode === 'driving') {
+          const msg = s.toggleVehicle();
+          if (msg) toast(msg, 'info', 1600);
+        }
+        break;
       case 'reset':
         if (this.mode === 'driving') s.resetCar();
         break;
@@ -428,7 +439,7 @@ class App {
     try {
       const s = this.session;
       if (s && (this.mode === 'driving' || this.mode === 'paused' || this.mode === 'map')) {
-        s.update(dt, this.input.read(dt), this.mode === 'driving', this.input.firing());
+        s.update(dt, this.input.read(dt), this.mode === 'driving', this.input.firing(), this.input.readFoot());
         s.render(this.renderer);
         this.updateHud(s, dt);
         if (this.mode === 'driving' && this.governor.sample(rawDt)) {

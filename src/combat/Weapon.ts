@@ -52,14 +52,21 @@ export class Weapon {
   constructor(
     private readonly physics: RAPIER.World,
     rapier: typeof RAPIER,
-    private readonly playerBody: RAPIER.RigidBody,
+    private playerBody: RAPIER.RigidBody,
     /** Muzzle position in the car's local frame (out of the driver's window). */
-    private readonly muzzleLocal: THREE.Vector3,
-    private readonly carRoot: THREE.Object3D,
+    private muzzleLocal: THREE.Vector3,
+    private carRoot: THREE.Object3D,
     private readonly pedestrians: Pedestrians,
     private readonly traffic: Traffic,
   ) {
     this.ray = new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+  }
+
+  /** Who is shooting: the body to exclude from hits, the frame the muzzle moves with, and the muzzle in that frame. */
+  setShooter(body: RAPIER.RigidBody, root: THREE.Object3D, muzzleLocal: THREE.Vector3): void {
+    this.playerBody = body;
+    this.carRoot = root;
+    this.muzzleLocal = muzzleLocal;
   }
 
   status(): WeaponStatus {
