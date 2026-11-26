@@ -18,7 +18,7 @@ export interface CarState {
 
 export type HeightFn = (x: number, z: number) => number;
 
-type PedMode = 'walk' | 'cross' | 'wait' | 'dodge' | 'knocked' | 'getup';
+type PedMode = 'walk' | 'cross' | 'wait' | 'dodge' | 'flee' | 'knocked' | 'getup';
 
 /** A road prepared for walking: cumulative lengths for distance lookups. */
 interface WalkPath {
@@ -157,6 +157,91 @@ export class Pedestrians {
   /** Read-only view for tests and the debug hook. */
   snapshot(): { x: number; y: number; z: number; mode: PedMode }[] {
     return this.peds.filter((p) => p.active).map((p) => ({ x: p.pos.x, y: p.pos.y, z: p.pos.z, mode: p.mode }));
+  }
+
+  /**
+   * Distance ahead along (fx, fz) from (x, z) to the nearest standing person
+   * within `halfWidth` of that line, or Infinity. Used by traffic to brake.
+   */
+  nearestAhead(x: number, z: number, fx: number, fz: number, range: number, halfWidth: number): number {
+    let best = Infinity;
+    for (const p of this.peds) {
+      if (!p.active || p.mode === 'knocked') continue;
+      const dx = p.pos.x - x;
+      const dz = p.pos.z - z;
+      const along = dx * fx + dz * fz;
+      if (along <= 0 || along > range || along >= best) continue;
+      if (Math.abs(dx * -fz + dz * fx) < halfWidth + 0.3) best = along;
+    }
+    return best;
+  }
+
+  /**
+   * Nearest person hit by a ray (unit direction), as their slot index and
+   * distance. Standing people are capsules; people on the ground a low disc.
+   */
+  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number): { index: number; dist: number } | null {
+    let best: { index: number; dist: number } | null = null;
+    for (let i = 0; i < this.peds.length; i++) {
+      const p = this.peds[i];
+      if (!p.active || !p.look) continue;
+      const down = p.mode === 'knocked' || p.mode === 'getup';
+      const r = down ? 0.55 : 0.28;
+      const y0 = p.pos.y + (down ? 0.15 : 0.25);
+      const y1 = p.pos.y + (down ? 0.35 : 1.6 * p.look.scale);
+      // Closest approach between the ray and the vertical segment (x, y0..y1, z).
+      const wx = ox - p.pos.x;
+      const wz = oz - p.pos.z;
+      const a = dx * dx + dz * dz;
+      if (a < 1e-8) continue;
+      const t = -(wx * dx + wz * dz) / a;
+      if (t < 0 || t > maxDist) continue;
+      const cx = wx + dx * t;
+      const cz = wz + dz * t;
+      if (cx * cx + cz * cz > r * r) continue;
+      const y = oy + dy * t;
+      if (y < y0 - r || y > y1 + r) continue;
+      if (!best || t < best.dist) best = { index: i, dist: t };
+    }
+    return best;
+  }
+
+  /** Knock a person over (gunshot or explosion), pushed along (dx, dz). */
+  knock(index: number, dx: number, dz: number, strength: number): void {
+    const p = this.peds[index];
+    if (!p?.active || p.mode === 'knocked') return;
+    const len = Math.hypot(dx, dz) || 1;
+    p.mode = 'knocked';
+    p.timer = 3 + this.rand() * 2;
+    p.vel.set((dx / len) * strength, 1 + strength * 0.2, (dz / len) * strength);
+    p.yaw = Math.atan2(-p.vel.x, -p.vel.z);
+    p.moveSpeed = 0;
+  }
+
+  /** Knock over everyone within `radius` of a blast, thrown away from its centre. */
+  blast(x: number, z: number, radius: number, strength: number): void {
+    this.peds.forEach((p, i) => {
+      if (!p.active) return;
+      const dx = p.pos.x - x;
+      const dz = p.pos.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d < radius) this.knock(i, dx, dz, strength * (1 - d / radius) + 2);
+    });
+  }
+
+  /** Everyone within `radius` of a loud event runs away from it. */
+  alarm(x: number, z: number, radius: number): void {
+    for (const p of this.peds) {
+      if (!p.active || p.mode === 'knocked' || p.mode === 'getup') continue;
+      const dx = p.pos.x - x;
+      const dz = p.pos.z - z;
+      const d = Math.hypot(dx, dz);
+      if (d > radius) continue;
+      const k = (12 + this.rand() * 10) / Math.max(0.5, d);
+      p.mode = 'flee';
+      p.timer = 5 + this.rand() * 3;
+      p.dodgeTarget.set(p.pos.x + dx * k, p.pos.z + dz * k);
+    }
   }
 
   update(dt: number, car: CarState): void {
@@ -343,7 +428,7 @@ export class Pedestrians {
       return;
     }
 
-    if (p.mode === 'dodge' || absV < 3) return;
+    if (p.mode === 'dodge' || p.mode === 'flee' || absV < 3) return;
     const ahead = v > 0 ? along : -along;
     const reach = car.halfLength + 2 + absV * 1.6;
     if (ahead > 0 && ahead < reach && Math.abs(lat) < car.halfWidth + 1.4) {
@@ -368,6 +453,20 @@ export class Pedestrians {
           p.timer = 1 + this.rand();
         }
         return;
+      case 'flee': {
+        p.timer -= dt;
+        const dx = p.dodgeTarget.x - p.pos.x;
+        const dz = p.dodgeTarget.y - p.pos.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.3 || p.timer <= 0) {
+          p.mode = 'wait';
+          p.timer = 2 + this.rand() * 3;
+          p.moveSpeed = 0;
+          return;
+        }
+        this.moveToward(p, dx, dz, d, 4.6, dt);
+        return;
+      }
       case 'dodge': {
         p.timer -= dt;
         const dx = p.dodgeTarget.x - p.pos.x;

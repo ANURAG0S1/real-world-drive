@@ -19,7 +19,7 @@ const ACTION_CODES: Readonly<Record<string, ActionKey>> = {
 /** Keyboard + touch input with smoothed steering so keyboard play is not twitchy. */
 export class InputController {
   private readonly keys = new Set<string>();
-  private readonly touch = { throttle: false, brake: false, left: false, right: false, handbrake: false };
+  private readonly touch = { throttle: false, brake: false, left: false, right: false, handbrake: false, fire: false };
   private steerSmoothed = 0;
   enabled = false;
   onAction: ((a: ActionKey) => void) | null = null;
@@ -33,11 +33,29 @@ export class InputController {
         e.preventDefault();
         return;
       }
-      if (this.enabled && /^(Arrow|Key[WASD]$|Space)/.test(e.code)) e.preventDefault();
+      if (this.enabled && /^(Arrow|Key[WASDF]$|Space)/.test(e.code)) e.preventDefault();
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => {
+      this.keys.clear();
+      this.mouseFire = false;
+    });
+    // Left mouse on the 3D view fires; HUD buttons sit above the canvas and are unaffected.
+    const canvas = document.getElementById('scene');
+    canvas?.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseFire = true;
+    });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseFire = false;
+    });
+  }
+
+  private mouseFire = false;
+
+  /** True while the fire control (F or left mouse) is held. */
+  firing(): boolean {
+    return this.enabled && (this.keys.has('KeyF') || this.mouseFire || this.touch.fire);
   }
 
   setTouch(control: keyof InputController['touch'], down: boolean): void {

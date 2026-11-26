@@ -5,6 +5,7 @@ import type { ChunkSource } from '../data/chunkSource';
 import { LocalProjection } from '../geo/projection';
 import { Terrain } from '../geo/terrain';
 import type { LatLon, LocalXZ } from '../geo/types';
+import { Weapon } from '../combat/Weapon';
 import { CarReflections } from '../render/CarReflections';
 import { PostFX } from '../render/PostFX';
 import { Car } from '../vehicle/Car';
@@ -13,6 +14,8 @@ import type { VehicleSpec } from '../vehicle/specs';
 import { Environment } from '../world/Environment';
 import { Ground } from '../world/Ground';
 import { Pedestrians } from '../world/Pedestrians';
+import { Traffic } from '../world/Traffic';
+import { drivesOnLeft } from '../geo/trafficSide';
 import { createWorldMaterials, type WorldMaterials } from '../world/materials';
 import { World } from '../world/World';
 import type { QualityProfile } from './settings';
@@ -41,6 +44,10 @@ export class DriveSession {
   readonly terrain: Terrain;
   readonly ground: Ground;
   readonly pedestrians: Pedestrians;
+  traffic!: Traffic;
+  weapon!: Weapon;
+  /** Called when the player rams a traffic car (impact km/h). */
+  onTrafficCrash: ((kmh: number) => void) | null = null;
   car!: Car;
   private readonly physics: RAPIER.World;
   private readonly env: Environment;
@@ -92,6 +99,31 @@ export class DriveSession {
     await this.world.update({ x: 0, z: 0 });
     this.car = new Car(this.opts.vehicle, this.physics, this.rapier, this.scene);
     this.chase.cockpitEye.copy(this.car.model.driverEye).add(this.car.model.body.position);
+    this.traffic = new Traffic(
+      this.opts.quality.traffic,
+      () => this.world.roads(),
+      (x, z) => this.ground.heightAt(x, z),
+      this.physics,
+      this.rapier,
+      drivesOnLeft(this.opts.origin),
+      this.opts.quality.shadowMapSize > 0,
+      (x, z, fx, fz, range, hw) => this.pedestrians.nearestAhead(x, z, fx, fz, range, hw),
+    );
+    this.traffic.onCrash = (kmh) => this.onTrafficCrash?.(kmh);
+    this.scene.add(this.traffic.root);
+    // Sidearm out of the driver's window: beside and a little ahead of the driver's eye.
+    const eye = this.car.model.driverEye.clone().add(this.car.model.body.position);
+    const outward = eye.x < 0 ? -1 : 1;
+    this.weapon = new Weapon(
+      this.physics,
+      this.rapier,
+      this.car.body,
+      new THREE.Vector3(eye.x + outward * 0.55, eye.y - 0.12, eye.z + 0.35),
+      this.car.model.root,
+      this.pedestrians,
+      this.traffic,
+    );
+    this.scene.add(this.weapon.effects.root);
     if (this.opts.quality.reflectionInterval > 0) {
       this.reflections = new CarReflections(this.scene, this.car.model.root, 128, this.opts.quality.reflectionInterval);
     }
@@ -117,6 +149,12 @@ export class DriveSession {
     this.chase.snap();
   }
 
+  private playerState(): { x: number; z: number; heading: number; speed: number; halfWidth: number; halfLength: number } {
+    const t = this.car.body.translation();
+    const he = this.car.spec.halfExtents;
+    return { x: t.x, z: t.z, heading: this.car.heading(), speed: this.car.speed(), halfWidth: he[0], halfLength: he[2] };
+  }
+
   playerLocal(): LocalXZ {
     const t = this.car.body.translation();
     return { x: t.x, z: t.z };
@@ -132,7 +170,7 @@ export class DriveSession {
     return this.intro < 1;
   }
 
-  update(frameDt: number, input: DriveInput, simulate: boolean): void {
+  update(frameDt: number, input: DriveInput, simulate: boolean, firing = false): void {
     const dt = Math.min(frameDt, 0.1);
     this.lastDt = dt;
     if (simulate) {
@@ -141,6 +179,7 @@ export class DriveSession {
       while (this.accumulator >= FIXED_DT && steps < 5) {
         this.snapPrev();
         this.car.step(this.introActive ? { throttle: 0, brake: 0, steer: 0, handbrake: true } : input, FIXED_DT);
+        this.traffic.step(FIXED_DT, this.playerState());
         this.physics.step();
         this.accumulator -= FIXED_DT;
         steps++;
@@ -163,6 +202,7 @@ export class DriveSession {
       cam.lookAt(root.position.clone().add(new THREE.Vector3(0, 1, 0)));
     }
     this.env.follow(root.position);
+    if (simulate) this.weapon.update(dt, firing && !this.introActive, this.chase.camera);
     // Runs during the fly-down too, so the streets are already busy when driving starts.
     if (simulate) {
       const he = this.car.spec.halfExtents;
@@ -185,6 +225,7 @@ export class DriveSession {
   }
 
   render(renderer: THREE.WebGLRenderer): void {
+    this.traffic.render();
     // In cockpit view the car's paint is hidden, so its reflections are not worth refreshing.
     if (this.chase.mode !== 'cockpit' || this.introActive) this.reflections?.update(renderer);
     this.postfx.render(this.lastDt);
@@ -199,6 +240,8 @@ export class DriveSession {
   dispose(): void {
     this.world.dispose();
     this.pedestrians.dispose();
+    this.traffic?.dispose();
+    this.weapon?.dispose();
     this.reflections?.dispose();
     this.postfx.dispose();
     this.car?.dispose(this.scene);

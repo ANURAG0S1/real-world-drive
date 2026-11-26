@@ -42,6 +42,85 @@ export class EngineAudio {
     thunk.stop(t + 0.12);
   }
 
+  private burstBuffer: AudioBuffer | null = null;
+
+  /** Short decaying white-noise burst shared by gunshots and explosions. */
+  private burst(ctx: AudioContext): AudioBuffer {
+    if (this.burstBuffer) return this.burstBuffer;
+    const len = Math.floor(ctx.sampleRate * 1.6);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.25));
+    this.burstBuffer = buf;
+    return buf;
+  }
+
+  /** A pistol crack: band-passed noise snap plus a low punch. */
+  gunshot(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || this.muted) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.burst(ctx);
+    src.playbackRate.value = 1.6 + Math.random() * 0.2;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 1800;
+    bp.Q.value = 0.7;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.55, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    src.connect(bp).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + 0.2);
+    const punch = ctx.createOscillator();
+    punch.type = 'sine';
+    punch.frequency.setValueAtTime(160, t);
+    punch.frequency.exponentialRampToValueAtTime(50, t + 0.07);
+    const pg = ctx.createGain();
+    pg.gain.setValueAtTime(0.4, t);
+    pg.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+    punch.connect(pg).connect(this.master);
+    punch.start(t);
+    punch.stop(t + 0.1);
+  }
+
+  /** A deep boom with a long rumble tail, for a destroyed car. */
+  explosion(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || this.muted) return;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.burst(ctx);
+    src.playbackRate.value = 0.45;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1200, t);
+    lp.frequency.exponentialRampToValueAtTime(120, t + 1.4);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.9, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 2.2);
+    src.connect(lp).connect(g).connect(this.master);
+    src.start(t);
+    src.stop(t + 2.4);
+  }
+
+  /** Empty-magazine click. */
+  dryFire(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || this.muted) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = 2400;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.06, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
+    o.connect(g).connect(this.master);
+    o.start(t);
+    o.stop(t + 0.04);
+  }
+
   /** A dull body thump when the car clips a pedestrian; louder at speed. */
   bump(kmh: number): void {
     const ctx = this.ctx;

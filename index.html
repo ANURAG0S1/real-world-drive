@@ -75,6 +75,9 @@
         <button class="btn btn-icon" id="btn-pause" type="button" title="Menu (Esc)">Menu <kbd>Esc</kbd></button>
       </div>
 
+      <div id="crosshair" class="crosshair" aria-hidden="true"></div>
+      <div id="ammo" class="panel ammo"><span id="ammo-count" class="mono">24</span><span class="muted small"> / 24</span><span class="muted small ammo-hint">F or click to fire</span></div>
+
       <div class="minimap-wrap panel">
         <canvas id="minimap" width="440" height="440"></canvas>
         <span id="minimap-n" class="minimap-n">N</span>
@@ -104,6 +107,7 @@
           <li><kbd>S</kbd><kbd>↓</kbd> Brake / reverse</li>
           <li><kbd>A</kbd><kbd>D</kbd> Steer</li>
           <li><kbd>Space</kbd> Handbrake</li>
+          <li><kbd>F</kbd> / click Fire</li>
           <li><kbd>C</kbd> Camera · <kbd>H</kbd> Lights</li>
           <li><kbd>R</kbd> Reset · <kbd>M</kbd> Map · <kbd>Esc</kbd> Menu</li>
         </ul>

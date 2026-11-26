@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:physics": "node tests/run-physics.mjs",
-    "test:peds": "node tests/run-physics.mjs tests/pedestrians.sim.ts"
+    "test:peds": "node tests/run-physics.mjs tests/pedestrians.sim.ts",
+    "test:traffic": "node tests/run-physics.mjs tests/traffic.sim.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "0.14.0",

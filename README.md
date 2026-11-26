@@ -37,6 +37,7 @@ No API keys are needed. All map data comes from free OpenStreetMap services.
 | S / ↓ | Brake, then reverse once stopped |
 | A D / ← → | Steer |
 | Space | Handbrake |
+| F or left click | Fire (aim with the camera crosshair) |
 | C | Cycle camera (chase, cockpit, cinematic) |
 | H | Headlights |
 | R | Reset the car onto the nearest road |
@@ -72,6 +73,14 @@ The look comes from a post-processing chain (`src/render/PostFX.ts`): the scene 
 | Ultra | full-resolution AO, bloom and grade | live, every 6 frames |
 
 Resolution is dynamic: `src/core/FrameGovernor.ts` watches frame times and lowers the render resolution (down to 55% of the preset) when the frame rate drops below about 50 fps, then raises it again when there is headroom.
+
+## Traffic
+
+AI cars (hatchbacks, sedans, SUVs and auto-rickshaws) drive the streamed OSM roads around the player: on the left in India, the UK, Japan, Australia and other left-hand countries, on the right elsewhere (`src/geo/trafficSide.ts`). They respect one-way streets and per-class speed limits, keep a braking-distance gap to the car ahead (and to you), slow for corners, cross junctions one at a time, and stop for pedestrians. Each is a kinematic Rapier body, so crashing into one is physical; a hard hit stops it for a few seconds. Instanced meshes keep the whole fleet to 16 draw calls. Count by quality: 8, 14, 22, 34. Code: `src/world/Traffic.ts`, `src/world/trafficModels.ts`; headless test: `npm run test:traffic`.
+
+## Weapons
+
+Hold F or the left mouse button to fire a sidearm from the driver's window at the crosshair (24-round magazine, automatic reload). Shots leave tracers, sparks and bullet holes. Traffic takes damage, smokes, then explodes and burns; people are knocked down and get back up, and anyone nearby runs from gunfire. Code: `src/combat/`.
 
 ## Pedestrians
 

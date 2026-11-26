@@ -146,3 +146,53 @@ kbd { font: 600 10px/1 var(--font-mono); padding: 3px 5px; border-radius: 4px; b
   .brand h1 { font-size: 19px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* Weapon */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  width: 22px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  background:
+    linear-gradient(#fff, #fff) center / 2px 7px no-repeat,
+    linear-gradient(#fff, #fff) center / 7px 2px no-repeat;
+  -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  opacity: 0.85;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
+}
+.crosshair::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+  -webkit-mask: linear-gradient(90deg, #000 30%, transparent 30% 70%, #000 70%);
+  mask: linear-gradient(90deg, #000 30%, transparent 30% 70%, #000 70%);
+}
+.crosshair.firing {
+  transform: translate(-50%, -50%) scale(1.25);
+}
+.ammo {
+  position: absolute;
+  right: 24px;
+  bottom: 262px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.ammo #ammo-count {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+}
+.ammo.reloading #ammo-count {
+  color: var(--accent, #ff7a2f);
+}
+.ammo-hint {
+  margin-left: 10px;
+}

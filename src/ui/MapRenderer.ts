@@ -31,6 +31,8 @@ export function drawRoadMap(
   roads: Iterable<LocalRoad>,
   view: MapView,
   player: { pos: LocalXZ; heading: number },
+  /** Other vehicles to mark (traffic), drawn as small dots; wrecked ones in red. */
+  vehicles: readonly { x: number; z: number; stunned: boolean }[] = [],
 ): void {
   ctx.save();
   ctx.fillStyle = '#121822';
@@ -65,6 +67,14 @@ export function drawRoadMap(
       r.points.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.z) : ctx.lineTo(pt.x, pt.z)));
       ctx.stroke();
     }
+  }
+
+  const dot = 3.2 / view.scale;
+  for (const v of vehicles) {
+    ctx.fillStyle = v.stunned ? '#ff4d4d' : '#59c8ff';
+    ctx.beginPath();
+    ctx.arc(v.x, v.z, dot, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // Player arrow, constant on-screen size.

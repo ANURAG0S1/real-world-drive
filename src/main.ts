@@ -305,6 +305,10 @@ class App {
           this.hud.configure(session.car.spec.redlineRpm);
           this.audio.configure(session.car.spec.firingPerRev);
           session.pedestrians.onHit = (kmh) => this.audio.bump(kmh);
+          session.onTrafficCrash = (kmh) => this.audio.bump(kmh * 1.5);
+          session.weapon.onShot = () => this.audio.gunshot();
+          session.weapon.onDryFire = () => this.audio.dryFire();
+          session.weapon.onExplosion = () => this.audio.explosion();
           this.lastGear = '';
           this.setMode('driving');
           const st = session.world.status();
@@ -424,7 +428,7 @@ class App {
     try {
       const s = this.session;
       if (s && (this.mode === 'driving' || this.mode === 'paused' || this.mode === 'map')) {
-        s.update(dt, this.input.read(dt), this.mode === 'driving');
+        s.update(dt, this.input.read(dt), this.mode === 'driving', this.input.firing());
         s.render(this.renderer);
         this.updateHud(s, dt);
         if (this.mode === 'driving' && this.governor.sample(rawDt)) {
@@ -452,15 +456,22 @@ class App {
     this.hudTimer -= dt;
     if (this.hudTimer <= 0) {
       this.hudTimer = 1 / 30;
+      const w = s.weapon.status();
+      const ammoEl = $('ammo');
+      $('ammo-count').textContent = w.reloading ? 'RELOAD' : String(w.ammo);
+      ammoEl.classList.toggle('reloading', w.reloading);
+      $('crosshair').classList.toggle('firing', this.input.firing());
+      // The crosshair is meaningless in the cockpit camera's view of the dash.
+      $('crosshair').hidden = s.chase.mode === 'cockpit';
       const pos = s.playerLocal();
       if (this.minimap) {
-        drawRoadMap(this.minimap, 440, 440, s.world.roads(), { center: pos, scale: 1.25, rotation: heading }, { pos, heading });
+        drawRoadMap(this.minimap, 440, 440, s.world.roads(), { center: pos, scale: 1.25, rotation: heading }, { pos, heading }, s.traffic.snapshot());
       }
       if (this.mode === 'map') {
         const ctx = this.bigmap.getContext('2d');
         if (ctx) {
           const dpr = this.bigmap.width / Math.max(1, this.bigmap.clientWidth);
-          drawRoadMap(ctx, this.bigmap.width, this.bigmap.height, s.world.roads(), { center: pos, scale: this.bigmapScale * dpr, rotation: 0 }, { pos, heading });
+          drawRoadMap(ctx, this.bigmap.width, this.bigmap.height, s.world.roads(), { center: pos, scale: this.bigmapScale * dpr, rotation: 0 }, { pos, heading }, s.traffic.snapshot());
         }
       }
     }

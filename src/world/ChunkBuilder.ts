@@ -27,6 +27,8 @@ export interface LocalRoad {
   readonly name: string | null;
   readonly width: number;
   readonly oneway: boolean;
+  /** Total lanes (both directions on a two-way road). */
+  readonly lanes: number;
   readonly points: LocalXZ[];
 }
 
@@ -171,7 +173,7 @@ export class ChunkBuilder {
       if (!claim('road', road.id)) continue;
       const pts = simplify(toLocal(this.proj, road.geometry));
       if (pts.length < 2) continue;
-      roads.push({ id: road.id, kind: road.kind, name: road.name, width: road.width, oneway: road.oneway, points: pts });
+      roads.push({ id: road.id, kind: road.kind, name: road.name, width: road.width, oneway: road.oneway, lanes: road.lanes, points: pts });
       this.buildRoad(road, densify(pts, 6), bufs, lights, trees);
     }
 

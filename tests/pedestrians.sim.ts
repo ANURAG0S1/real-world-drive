@@ -16,8 +16,8 @@ function check(name: string, ok: boolean, detail = ''): void {
 const roads: LocalRoad[] = [];
 let id = 1;
 for (let i = -2; i <= 2; i++) {
-  roads.push({ id: id++, kind: 'residential', name: null, width: 8, oneway: false, points: [{ x: -200, z: i * 100 }, { x: 0, z: i * 100 }, { x: 200, z: i * 100 }] });
-  roads.push({ id: id++, kind: 'residential', name: null, width: 8, oneway: false, points: [{ x: i * 100, z: -200 }, { x: i * 100, z: 0 }, { x: i * 100, z: 200 }] });
+  roads.push({ id: id++, kind: 'residential', name: null, width: 8, oneway: false, lanes: 2, points: [{ x: -200, z: i * 100 }, { x: 0, z: i * 100 }, { x: 200, z: i * 100 }] });
+  roads.push({ id: id++, kind: 'residential', name: null, width: 8, oneway: false, lanes: 2, points: [{ x: i * 100, z: -200 }, { x: i * 100, z: 0 }, { x: i * 100, z: 200 }] });
 }
 const flat = (): number => 0;
 const DT = 1 / 60;
