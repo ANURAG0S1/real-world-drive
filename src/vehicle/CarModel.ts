@@ -17,6 +17,10 @@ export class CarModel {
   /** Driver eye point in `body` coordinates, for the cockpit camera. */
   readonly driverEye: THREE.Vector3;
   private readonly steeringWheel = new THREE.Group();
+  /** Exterior shell hidden in cockpit view (seen from inside it would cover the dash). */
+  private readonly shell: THREE.Object3D[] = [];
+  /** Hood and cabin tub shown only in cockpit view. */
+  private readonly cockpitOnly = new THREE.Group();
   private readonly brakeMat: THREE.MeshStandardMaterial;
   private readonly headMat: THREE.MeshStandardMaterial;
   private readonly reverseMat: THREE.MeshStandardMaterial;
@@ -46,7 +50,15 @@ export class CarModel {
     const width = hw * 2;
     const cabinW = width * p.cabinWidth;
 
-    this.addMesh(this.extrudeSide(this.lowerProfile(p), width, 0.12, 0.07), paint);
+    this.shell.push(this.addMesh(this.extrudeSide(this.lowerProfile(p), width, 0.12, 0.07), paint));
+    // Cockpit stand-ins: the hood ahead of the screen and a dark tub around the seats.
+    const hood = new THREE.Mesh(this.extrudeSide(this.hoodProfile(p), width, 0.12, 0.07), paint);
+    const tubLen = p.screenBaseZ - p.rearGlassBaseZ;
+    const tub = new THREE.Mesh(new THREE.BoxGeometry(width - 0.04, 0.5, tubLen), new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9, side: THREE.BackSide }));
+    tub.position.set(0, p.deckHeight - 0.3, (p.screenBaseZ + p.rearGlassBaseZ) / 2);
+    this.cockpitOnly.add(hood, tub);
+    this.cockpitOnly.visible = false;
+    this.body.add(this.cockpitOnly);
     this.addMesh(this.extrudeSide(this.cabinProfile(p), cabinW, 0.08, 0.05), glass);
     this.addMesh(this.extrudeSide(this.roofProfile(p), cabinW + 0.02, 0.06, 0.03), paint);
 
@@ -175,10 +187,31 @@ export class CarModel {
     }
   }
 
-  private addMesh(geo: THREE.BufferGeometry, mat: THREE.Material): void {
+  private addMesh(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
     const m = new THREE.Mesh(geo, mat);
     m.castShadow = true;
     this.body.add(m);
+    return m;
+  }
+
+  /** Switches between the full exterior and the view from the driver's seat. */
+  setCockpit(on: boolean): void {
+    for (const o of this.shell) o.visible = !on;
+    this.cockpitOnly.visible = on;
+  }
+
+  /** Front of the body up to the windscreen, used as the visible hood in cockpit view. */
+  private hoodProfile(p: BodyProfile): THREE.Shape {
+    const [, , hl] = this.spec.halfExtents;
+    const s = new THREE.Shape();
+    const low = p.hoodHeight - 0.25;
+    s.moveTo(-hl - 0.02, low);
+    s.lineTo(-hl - 0.02, p.noseHeight);
+    s.quadraticCurveTo(-hl, p.noseHeight + 0.18, -hl + 0.35, p.noseHeight + 0.24);
+    s.quadraticCurveTo(-p.screenBaseZ - 0.25, p.hoodHeight - 0.02, -p.screenBaseZ, p.hoodHeight);
+    s.lineTo(-p.screenBaseZ, low);
+    s.lineTo(-hl - 0.02, low);
+    return s;
   }
 
   /** Extrudes a side profile (shape X = -car Z, shape Y = height) across the car's width. */
@@ -264,7 +297,7 @@ export class CarModel {
     this.body.add(screen);
 
     const wheelZ = dashZ - 0.4;
-    const wheelY = p.hoodHeight + 0.02;
+    const wheelY = p.hoodHeight - 0.03;
     this.steeringWheel.position.set(driverX, wheelY, wheelZ);
     this.steeringWheel.rotation.x = -0.35;
     const rim = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.024, 10, 32), mat);

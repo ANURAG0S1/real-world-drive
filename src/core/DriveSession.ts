@@ -125,6 +125,7 @@ export class DriveSession {
     this.car.syncVisuals(simulate ? this.accumulator / FIXED_DT : 1, this.prev);
 
     const root = this.car.model.root;
+    this.car.model.setCockpit(this.chase.mode === 'cockpit' && !this.introActive);
     this.chase.update(root, this.car.speed(), dt);
     if (this.intro < 1) {
       this.intro = Math.min(1, this.intro + dt / 2.6);
