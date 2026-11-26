@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { RoadKind } from '../data/osmTypes';
 import type { LocalRoad } from './ChunkBuilder';
+import { PedestrianRig, type Appearance } from './pedestrianBody';
 
 /** What the crowd needs to know about the player's car each frame. */
 export interface CarState {
@@ -41,8 +42,7 @@ interface Ped {
   walkSpeed: number;
   moveSpeed: number;
   phase: number;
-  scale: number;
-  lowerLen: number;
+  look: Appearance | null;
   mode: PedMode;
   timer: number;
   crossTimer: number;
@@ -62,10 +62,6 @@ const CANDIDATE_RADIUS = 220;
 const FOOT_LIFT = 0.13;
 const GRAVITY = 9.81;
 
-const SHIRTS = [0xf2f2ee, 0x9cc3e6, 0x23345c, 0x7a1f2b, 0xe8b931, 0x2f7d4f, 0x1c1c1e, 0x8a8f96, 0xe0662b, 0xd977a5, 0x5b3f8c, 0x3aa6a0];
-const PANTS = [0x2c4a78, 0x1b1b1d, 0x55585e, 0xb59b6e, 0xe9e6dc, 0x3b2f2a];
-const SKIN = [0x8d5a3b, 0xa86b45, 0xc68a5f, 0x6e4329, 0xb87a52, 0x9a6040];
-const HAIR = [0x141210, 0x1e1712, 0x2b1f17, 0x8f8a84];
 
 /** Small deterministic PRNG so a test run is reproducible; seeded per crowd. */
 function mulberry32(seed: number): () => number {
@@ -77,33 +73,6 @@ function mulberry32(seed: number): () => number {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-/** Body parts drawn as one InstancedMesh each; all pivots are in metres above the feet. */
-interface PartDef {
-  readonly name: string;
-  readonly geometry: THREE.BufferGeometry;
-  readonly pivot: THREE.Vector3;
-}
-
-function boxHanging(w: number, h: number, d: number): THREE.BufferGeometry {
-  return new THREE.BoxGeometry(w, h, d).translate(0, -h / 2, 0);
-}
-
-function buildParts(): PartDef[] {
-  const head = new THREE.SphereGeometry(0.115, 12, 9).translate(0, 0.13, 0);
-  const hair = new THREE.SphereGeometry(0.122, 12, 6, 0, Math.PI * 2, 0, Math.PI * 0.55).translate(0, 0.145, -0.012);
-  return [
-    { name: 'legL', geometry: boxHanging(0.15, 0.86, 0.17), pivot: new THREE.Vector3(0.095, 0.88, 0) },
-    { name: 'legR', geometry: boxHanging(0.15, 0.86, 0.17), pivot: new THREE.Vector3(-0.095, 0.88, 0) },
-    { name: 'torso', geometry: new THREE.BoxGeometry(0.38, 0.6, 0.22).translate(0, 0.3, 0), pivot: new THREE.Vector3(0, 0.86, 0) },
-    // Unit-length garment below the hip (kurta or long dress), scaled per person; zero length hides it.
-    { name: 'lower', geometry: boxHanging(0.4, 1, 0.25), pivot: new THREE.Vector3(0, 0.9, 0) },
-    { name: 'armL', geometry: boxHanging(0.1, 0.6, 0.12), pivot: new THREE.Vector3(0.245, 1.43, 0) },
-    { name: 'armR', geometry: boxHanging(0.1, 0.6, 0.12), pivot: new THREE.Vector3(-0.245, 1.43, 0) },
-    { name: 'head', geometry: head, pivot: new THREE.Vector3(0, 1.47, 0) },
-    { name: 'hair', geometry: hair, pivot: new THREE.Vector3(0, 1.47, 0) },
-  ];
 }
 
 /**
@@ -118,7 +87,7 @@ export class Pedestrians {
 
   private readonly peds: Ped[] = [];
   private readonly meshes: THREE.InstancedMesh[] = [];
-  private readonly parts = buildParts();
+  private readonly rig = new PedestrianRig();
   private readonly material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0 });
   private readonly paths = new WeakMap<LocalRoad, WalkPath>();
   private candidates: WalkPath[] = [];
@@ -131,13 +100,11 @@ export class Pedestrians {
 
   // Scratch objects reused every frame.
   private readonly mBase = new THREE.Matrix4();
-  private readonly mPart = new THREE.Matrix4();
-  private readonly mTmp = new THREE.Matrix4();
+  private readonly vScale = new THREE.Vector3();
   private readonly qTmp = new THREE.Quaternion();
   private readonly vTmp = new THREE.Vector3();
   private readonly eTmp = new THREE.Euler();
   private readonly sample = { x: 0, z: 0, tx: 0, tz: 1 };
-  private static readonly ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
 
   constructor(
     readonly capacity: number,
@@ -147,17 +114,7 @@ export class Pedestrians {
     seed = 1337,
   ) {
     this.rand = mulberry32(seed);
-    for (const part of this.parts) {
-      const mesh = new THREE.InstancedMesh(part.geometry, this.material, Math.max(1, capacity));
-      mesh.name = `ped-${part.name}`;
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      // Instances move every frame, so the cached bounding sphere would cull them wrongly.
-      mesh.frustumCulled = false;
-      mesh.castShadow = castShadow;
-      for (let i = 0; i < capacity; i++) {
-        mesh.setMatrixAt(i, Pedestrians.ZERO);
-        mesh.setColorAt(i, new THREE.Color(0xffffff));
-      }
+    for (const mesh of this.rig.createMeshes(this.material, capacity, castShadow)) {
       this.meshes.push(mesh);
       this.root.add(mesh);
     }
@@ -174,8 +131,7 @@ export class Pedestrians {
         walkSpeed: 1.3,
         moveSpeed: 0,
         phase: 0,
-        scale: 1,
-        lowerLen: 0,
+        look: null,
         mode: 'walk',
         timer: 0,
         crossTimer: 0,
@@ -233,7 +189,7 @@ export class Pedestrians {
 
   dispose(): void {
     for (const mesh of this.meshes) mesh.dispose();
-    for (const part of this.parts) part.geometry.dispose();
+    for (const part of this.rig.parts) part.geometry.dispose();
     this.material.dispose();
     this.root.clear();
   }
@@ -341,46 +297,18 @@ export class Pedestrians {
       p.walkSpeed = 1.05 + r() * 0.55;
       p.moveSpeed = 0;
       p.phase = r() * Math.PI * 2;
-      p.scale = 0.88 + r() * 0.2;
-      const garment = r();
-      p.lowerLen = garment < 0.22 ? 0.74 : garment < 0.45 ? 0.34 : 0;
+      p.look = this.rig.randomAppearance(r);
+      // Long dresses shorten the stride.
+      if (p.look.lowerLen > 0.5) p.walkSpeed *= 0.9;
       p.mode = r() < 0.12 ? 'wait' : 'walk';
       p.timer = 2 + r() * 4;
       p.crossTimer = 12 + r() * 50;
       p.fall = 0;
       p.vel.set(0, 0, 0);
-      this.paint(p);
+      this.rig.paint(this.meshes, this.peds.indexOf(p), p.look);
       return true;
     }
     return false;
-  }
-
-  private paint(p: Ped): void {
-    const r = this.rand;
-    const idx = this.peds.indexOf(p);
-    const shirt = new THREE.Color(SHIRTS[Math.floor(r() * SHIRTS.length)]);
-    const pants = new THREE.Color(PANTS[Math.floor(r() * PANTS.length)]);
-    const skin = new THREE.Color(SKIN[Math.floor(r() * SKIN.length)]);
-    const hair = new THREE.Color(HAIR[r() < 0.85 ? Math.floor(r() * 3) : 3]);
-    // Long garments match the top, like a salwar suit or saree.
-    const lower = p.lowerLen > 0.5 && r() < 0.6 ? shirt : shirt.clone().offsetHSL(0, 0, -0.08);
-    const colors: Record<string, THREE.Color> = {
-      legL: pants,
-      legR: pants,
-      torso: shirt,
-      lower,
-      armL: r() < 0.5 ? shirt : skin,
-      armR: shirt,
-      head: skin,
-      hair,
-    };
-    // Arms share a sleeve style.
-    colors.armR = colors.armL;
-    this.parts.forEach((part, k) => {
-      const mesh = this.meshes[k];
-      mesh.setColorAt(idx, colors[part.name] ?? shirt);
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    });
   }
 
   // --- behaviour -----------------------------------------------------------
@@ -524,7 +452,7 @@ export class Pedestrians {
       this.turnToward(p, Math.atan2(mx, mz), dt);
     }
     p.moveSpeed = p.walkSpeed;
-    p.phase += dt * p.walkSpeed * 2.4;
+    p.phase += dt * p.walkSpeed * 4.0;
     p.pos.y = this.groundAt(p.pos.x, p.pos.z) + FOOT_LIFT;
   }
 
@@ -580,7 +508,7 @@ export class Pedestrians {
     p.pos.y = this.groundAt(p.pos.x, p.pos.z) + FOOT_LIFT;
     this.turnToward(p, Math.atan2(dx, dz), dt);
     p.moveSpeed = speed;
-    p.phase += dt * speed * 2.4;
+    p.phase += dt * speed * 4.0;
   }
 
   private turnToward(p: Ped, yaw: number, dt: number): void {
@@ -594,54 +522,21 @@ export class Pedestrians {
   private writeInstances(): void {
     for (let i = 0; i < this.peds.length; i++) {
       const p = this.peds[i];
-      if (!p.active) {
-        for (const mesh of this.meshes) mesh.setMatrixAt(i, Pedestrians.ZERO);
+      if (!p.active || !p.look) {
+        this.rig.hide(this.meshes, i);
         continue;
       }
-      const run = Math.min(1.6, p.moveSpeed / 1.4);
-      const longDress = p.lowerLen > 0.5;
-      const swing = Math.sin(p.phase) * 0.5 * run * (longDress ? 0.45 : 1);
-      const armSwing = Math.sin(p.phase) * 0.42 * run;
-      const bob = p.mode === 'knocked' || p.mode === 'getup' ? 0 : Math.abs(Math.sin(p.phase)) * 0.035 * run;
-      // Lying flat, body boxes would sink half their depth into the road.
-      const lie = Math.sin(p.fall) * 0.11;
-
+      const gait = Math.min(1.6, p.moveSpeed / 1.4);
+      const down = p.mode === 'knocked' || p.mode === 'getup';
+      // Body rises at mid-stance, twice per cycle.
+      const bob = down ? 0 : (Math.abs(Math.cos(p.phase)) - 0.5) * 0.04 * Math.min(1, gait);
+      // Lying flat, the torso's depth would sink into the road.
+      const lie = Math.sin(p.fall) * 0.1;
       this.qTmp.setFromEuler(this.eTmp.set(-p.fall, p.yaw, 0, 'YXZ'));
       this.vTmp.set(p.pos.x, p.pos.y + bob + lie, p.pos.z);
-      this.mBase.compose(this.vTmp, this.qTmp, new THREE.Vector3(p.scale, p.scale, p.scale));
-
-      this.parts.forEach((part, k) => {
-        let rotX = 0;
-        let sy = 1;
-        switch (part.name) {
-          case 'legL':
-            rotX = swing;
-            break;
-          case 'legR':
-            rotX = -swing;
-            break;
-          case 'armL':
-            rotX = -armSwing;
-            break;
-          case 'armR':
-            rotX = armSwing;
-            break;
-          case 'torso':
-            rotX = run > 1.2 ? 0.18 : 0.03;
-            break;
-          case 'lower':
-            sy = p.lowerLen;
-            break;
-          default:
-            break;
-        }
-        if (p.mode === 'knocked' && (part.name === 'armL' || part.name === 'armR')) rotX = Math.PI * 0.7;
-        this.mPart.makeTranslation(part.pivot.x, part.pivot.y, part.pivot.z);
-        if (rotX !== 0) this.mPart.multiply(this.mTmp.makeRotationX(rotX));
-        if (sy !== 1) this.mPart.multiply(this.mTmp.makeScale(1, Math.max(sy, 0), 1));
-        this.mPart.premultiply(this.mBase);
-        this.meshes[k].setMatrixAt(i, sy <= 0 ? Pedestrians.ZERO : this.mPart);
-      });
+      const sc = p.look.scale;
+      this.mBase.compose(this.vTmp, this.qTmp, this.vScale.set(sc, sc, sc));
+      this.rig.write(this.meshes, i, this.mBase, p.look, { phase: p.phase, gait: down ? 0 : gait, fall: p.fall, knocked: p.mode === 'knocked' });
     }
     for (const mesh of this.meshes) mesh.instanceMatrix.needsUpdate = true;
   }
