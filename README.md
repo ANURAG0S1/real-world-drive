@@ -60,6 +60,17 @@ On the globe: drag to rotate, scroll to zoom, click to drop a pin, or search.
 
 Map data © OpenStreetMap contributors, available under the [ODbL](https://www.openstreetmap.org/copyright). The attribution is shown on every screen.
 
+## Rendering
+
+The look comes from a post-processing chain (`src/render/PostFX.ts`): the scene renders into a 4x MSAA half-float HDR buffer, then GTAO ambient occlusion grounds buildings, trees, people and the car; a high-threshold bloom picks out only lamps and sun glints; ACES tone mapping; and a filmic grade adds an S-curve, split toning, slight saturation, a lens vignette, faint chromatic fringing and grain. Surfaces get normal and roughness maps derived from their procedural textures (asphalt aggregate and cracks, paving joints, recessed glossy windows, roof seams), trees are built from alpha-cut leaf-cluster cards with canopy normals, the sky haze matches an exponential fog, and on High and Ultra a cube camera at the car refreshes live reflections of the street on the paint, glass and chrome.
+
+| Quality | Post-processing | Car reflections |
+| --- | --- | --- |
+| Low | none | sky only |
+| Medium | bloom and grade | sky only |
+| High | AO, bloom and grade | live, every 8 frames |
+| Ultra | AO, bloom and grade | live, every 3 frames |
+
 ## Pedestrians
 
 People walk the sidewalks of streets that have them (residential and up) and the middle of footpaths, around the player only: they spawn 35 to 150 m away and are removed past 190 m. They turn onto connecting streets at road ends, stop now and then, and sometimes cross when the car is more than 45 m away. A car heading at someone makes them jump aside; a hit throws them over, and after a few seconds they get back up. The car is not slowed. Each body has jointed limbs (hips, knees, ankles, shoulders, elbows), hands, shoes, a face and one of four hair styles, and people vary in skin, clothing (short or long sleeves, shorts, kurtas, long dresses), bags and height. The walk cycle bends knees and elbows and keeps feet flat; people run with a forward lean when dodging. Every body part is one instanced mesh shared by the whole crowd, so it costs about 23 draw calls however many people there are (about 0.65 ms per frame of CPU for 120). Crowd size follows the quality setting: 30, 55, 80 or 120. Code: `src/world/Pedestrians.ts` (behaviour) and `src/world/pedestrianBody.ts` (body and animation).

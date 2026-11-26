@@ -554,18 +554,68 @@ export class ChunkBuilder {
     return [poles, heads];
   }
 
+  private static crown: THREE.BufferGeometry | null = null;
+
+  /**
+   * Tree crown from ~46 leaf-cluster cards scattered through an ellipsoid.
+   * Normals point away from the crown centre, so light wraps round it like a
+   * real canopy instead of showing each flat card.
+   */
+  private static crownGeometry(): THREE.BufferGeometry {
+    if (ChunkBuilder.crown) return ChunkBuilder.crown;
+    const cards = 46;
+    const pos = new Float32Array(cards * 4 * 3);
+    const nor = new Float32Array(cards * 4 * 3);
+    const uv = new Float32Array(cards * 4 * 2);
+    const idx: number[] = [];
+    const center = new THREE.Vector3(0, 4.4, 0);
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const corner = new THREE.Vector3();
+    const p = new THREE.Vector3();
+    const n = new THREE.Vector3();
+    for (let k = 0; k < cards; k++) {
+      // Rejection-free point in an ellipsoid, biased outward so the silhouette stays full.
+      const u = hash01(k * 7 + 1) * 2 - 1;
+      const a = hash01(k * 7 + 2) * Math.PI * 2;
+      const rad = 0.45 + 0.55 * Math.cbrt(hash01(k * 7 + 3));
+      const sxz = Math.sqrt(1 - u * u);
+      p.set(Math.cos(a) * sxz * 2.3 * rad, u * 1.75 * rad, Math.sin(a) * sxz * 2.3 * rad).add(center);
+      q.setFromEuler(e.set(hash01(k * 7 + 4) * Math.PI, hash01(k * 7 + 5) * Math.PI * 2, hash01(k * 7 + 6) * Math.PI));
+      const size = 1.5 + hash01(k * 7 + 7) * 0.7;
+      const corners: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+      corners.forEach(([cx, cy], j) => {
+        corner.set(cx * size * 0.5, cy * size * 0.5, 0).applyQuaternion(q).add(p);
+        const o = (k * 4 + j) * 3;
+        pos[o] = corner.x;
+        pos[o + 1] = corner.y;
+        pos[o + 2] = corner.z;
+        n.copy(corner).sub(center);
+        n.y *= 1.6;
+        n.normalize();
+        nor[o] = n.x;
+        nor[o + 1] = n.y;
+        nor[o + 2] = n.z;
+        uv[(k * 4 + j) * 2] = (cx + 1) / 2;
+        uv[(k * 4 + j) * 2 + 1] = (cy + 1) / 2;
+      });
+      const b = k * 4;
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeBoundingSphere();
+    geo.userData.shared = true;
+    ChunkBuilder.crown = geo;
+    return geo;
+  }
+
   private instancedTrees(trees: PlacedProp[]): THREE.InstancedMesh[] {
     const trunk = new THREE.CylinderGeometry(0.14, 0.22, 3, 6).translate(0, 1.5, 0);
-    const crownA = new THREE.IcosahedronGeometry(2.1, 1).scale(1, 0.85, 1).translate(0, 4.1, 0);
-    const crownB = new THREE.IcosahedronGeometry(1.4, 1).translate(0.9, 5.0, 0.4);
-    const crown = mergeGeometries([crownA, crownB]);
-    // Per-vertex jitter breaks up the low-poly silhouette.
-    const pos = crown.getAttribute('position') as THREE.BufferAttribute;
-    for (let i = 0; i < pos.count; i++) {
-      const j = (hash01(i * 17) - 0.5) * 0.18;
-      pos.setXYZ(i, pos.getX(i) + j, pos.getY(i) + j * 0.6, pos.getZ(i) - j);
-    }
-    crown.computeVertexNormals();
+    const crown = ChunkBuilder.crownGeometry();
     const trunks = new THREE.InstancedMesh(trunk, this.mats.trunk, trees.length);
     const crowns = new THREE.InstancedMesh(crown, this.mats.foliage, trees.length);
     const m = new THREE.Matrix4();
@@ -577,7 +627,7 @@ export class ChunkBuilder {
       m.compose(new THREE.Vector3(t.x, this.h(t.x, t.z) - 0.2, t.z), q, new THREE.Vector3(t.scale, t.scale, t.scale));
       trunks.setMatrixAt(i, m);
       crowns.setMatrixAt(i, m);
-      c.setHSL(0.21 + hash01(i * 3) * 0.08, 0.35 + hash01(i * 5) * 0.2, 0.34 + hash01(i * 7) * 0.1);
+      c.setHSL(0.2 + hash01(i * 3) * 0.08, 0.45 + hash01(i * 5) * 0.2, 0.42 + hash01(i * 7) * 0.12);
       crowns.setColorAt(i, c);
     });
     trunks.castShadow = true;

@@ -206,7 +206,8 @@ export class World {
     if (!ch) return;
     this.root.remove(ch.group);
     ch.group.traverse((o) => {
-      if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) o.geometry.dispose();
+      // Shared geometry (tree crowns) is reused by every chunk and must outlive this one.
+      if ((o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) && !o.geometry.userData.shared) o.geometry.dispose();
     });
     for (const col of ch.colliders) this.physics.removeCollider(col, false);
     this.buildingCount -= ch.buildings;

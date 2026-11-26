@@ -22,9 +22,9 @@ export class Environment {
     this.sky = new Sky();
     this.sky.scale.setScalar(20000);
     const u = this.sky.material.uniforms;
-    u.turbidity.value = 6;
-    u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.006;
+    u.turbidity.value = 3.5;
+    u.rayleigh.value = 2.0;
+    u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.86;
     // Late-afternoon sun from the south-west, a flattering light for buildings.
     const elevation = 32;
@@ -47,7 +47,8 @@ export class Environment {
     scene.environmentIntensity = 0.7;
     pmrem.dispose();
 
-    scene.fog = new THREE.Fog(0xc3cdd6, 250, 1400);
+    // Exponential haze reads as real aerial perspective (NCR air is rarely crystal clear).
+    scene.fog = new THREE.FogExp2(0xb8c4cf, 0.0009);
 
     const hemi = new THREE.HemisphereLight(0xcfe3ff, 0x6f6550, 0.9);
     scene.add(hemi);

@@ -5,6 +5,8 @@ import type { ChunkSource } from '../data/chunkSource';
 import { LocalProjection } from '../geo/projection';
 import { Terrain } from '../geo/terrain';
 import type { LatLon, LocalXZ } from '../geo/types';
+import { CarReflections } from '../render/CarReflections';
+import { PostFX } from '../render/PostFX';
 import { Car } from '../vehicle/Car';
 import type { DriveInput } from '../vehicle/input';
 import type { VehicleSpec } from '../vehicle/specs';
@@ -47,6 +49,9 @@ export class DriveSession {
   private intro = 0;
   private readonly introFrom = new THREE.Vector3();
   private streamTimer = 0;
+  private readonly postfx: PostFX;
+  private reflections: CarReflections | null = null;
+  private lastDt = 1 / 60;
 
   constructor(
     private readonly opts: SessionOptions,
@@ -78,6 +83,7 @@ export class DriveSession {
     );
     this.scene.add(this.pedestrians.root);
     this.chase = new ChaseCamera(aspect);
+    this.postfx = new PostFX(renderer, this.scene, this.chase.camera, opts.quality.postfx);
   }
 
   /** Loads the first chunk and spawns the car on the nearest real road. */
@@ -86,6 +92,9 @@ export class DriveSession {
     await this.world.update({ x: 0, z: 0 });
     this.car = new Car(this.opts.vehicle, this.physics, this.rapier, this.scene);
     this.chase.cockpitEye.copy(this.car.model.driverEye).add(this.car.model.body.position);
+    if (this.opts.quality.reflectionInterval > 0) {
+      this.reflections = new CarReflections(this.scene, this.car.model.root, 128, this.opts.quality.reflectionInterval);
+    }
     const spawn = this.world.nearestRoadPoint({ x: 0, z: 0 }, 1500);
     const heading = spawn ? spawn.heading : (this.opts.headingDeg * Math.PI) / 180;
     const p = spawn ? spawn.point : { x: 0, z: 0 };
@@ -125,6 +134,7 @@ export class DriveSession {
 
   update(frameDt: number, input: DriveInput, simulate: boolean): void {
     const dt = Math.min(frameDt, 0.1);
+    this.lastDt = dt;
     if (simulate) {
       this.accumulator += dt;
       let steps = 0;
@@ -175,16 +185,22 @@ export class DriveSession {
   }
 
   render(renderer: THREE.WebGLRenderer): void {
-    renderer.render(this.scene, this.chase.camera);
+    // In cockpit view the car's paint is hidden, so its reflections are not worth refreshing.
+    if (this.chase.mode !== 'cockpit' || this.introActive) this.reflections?.update(renderer);
+    this.postfx.render(this.lastDt);
   }
 
-  resize(aspect: number): void {
-    this.chase.resize(aspect);
+  /** Viewport size in CSS pixels. */
+  resize(width: number, height: number): void {
+    this.chase.resize(width / Math.max(1, height));
+    this.postfx.setSize(width, height);
   }
 
   dispose(): void {
     this.world.dispose();
     this.pedestrians.dispose();
+    this.reflections?.dispose();
+    this.postfx.dispose();
     this.car?.dispose(this.scene);
     this.env.dispose();
     this.physics.free();

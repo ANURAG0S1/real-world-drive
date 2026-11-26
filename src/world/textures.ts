@@ -19,6 +19,87 @@ function toTexture(c: HTMLCanvasElement, srgb = true): THREE.CanvasTexture {
   return t;
 }
 
+/** Colour texture plus surface-detail maps derived from it. */
+export interface PbrMaps {
+  readonly map: THREE.CanvasTexture;
+  readonly normalMap: THREE.CanvasTexture;
+  readonly roughnessMap: THREE.CanvasTexture;
+}
+
+interface DeriveOptions {
+  /** Bump strength: how strongly luminance edges tilt the normal. */
+  readonly normalStrength: number;
+  /** Roughness for mid-grey, and how much brighter/darker pixels shift it. */
+  readonly roughBase: number;
+  readonly roughRange: number;
+  /** Treat dark blue-grey pixels as glass: smooth, and recessed in the height map. */
+  readonly glass?: boolean;
+  /** Invert height so dark joints and cracks read as grooves (default true). */
+  readonly darkIsLow?: boolean;
+}
+
+/**
+ * Derives a tangent-space normal map (Sobel on luminance, wrapping at the
+ * edges so tiles stay seamless) and a roughness map from a colour canvas.
+ */
+function deriveMaps(c: HTMLCanvasElement, o: DeriveOptions): { normalMap: THREE.CanvasTexture; roughnessMap: THREE.CanvasTexture } {
+  const w = c.width;
+  const h = c.height;
+  const src = c.getContext('2d')?.getImageData(0, 0, w, h);
+  if (!src) throw new Error('Canvas 2D is not available');
+  const d = src.data;
+  const height = new Float32Array(w * h);
+  const glassMask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = d[i * 4] / 255;
+    const g = d[i * 4 + 1] / 255;
+    const b = d[i * 4 + 2] / 255;
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const isGlass = o.glass === true && b > r + 0.03 && lum < 0.5;
+    glassMask[i] = isGlass ? 1 : 0;
+    const hv = o.darkIsLow === false ? 1 - lum : lum;
+    height[i] = isGlass ? hv - 0.35 : hv;
+  }
+  const [nc, nctx] = canvas(w, h);
+  const [rc, rctx] = canvas(w, h);
+  const nImg = nctx.createImageData(w, h);
+  const rImg = rctx.createImageData(w, h);
+  const at = (x: number, y: number): number => height[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const dx = at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1);
+      const dy = at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1);
+      let nx = -dx * o.normalStrength;
+      // Canvas Y runs down while texture V runs up.
+      let ny = dy * o.normalStrength;
+      let nz = 1;
+      const len = Math.hypot(nx, ny, nz);
+      nx /= len;
+      ny /= len;
+      nz /= len;
+      const i = y * w + x;
+      nImg.data[i * 4] = Math.round((nx * 0.5 + 0.5) * 255);
+      nImg.data[i * 4 + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      nImg.data[i * 4 + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+      nImg.data[i * 4 + 3] = 255;
+      const lum = (d[i * 4] * 0.2126 + d[i * 4 + 1] * 0.7152 + d[i * 4 + 2] * 0.0722) / 255;
+      const rough = glassMask[i] ? 0.06 : Math.min(1, Math.max(0.04, o.roughBase + (0.5 - lum) * o.roughRange));
+      const rv = Math.round(rough * 255);
+      rImg.data[i * 4] = rv;
+      rImg.data[i * 4 + 1] = rv;
+      rImg.data[i * 4 + 2] = rv;
+      rImg.data[i * 4 + 3] = 255;
+    }
+  }
+  nctx.putImageData(nImg, 0, 0);
+  rctx.putImageData(rImg, 0, 0);
+  return { normalMap: toTexture(nc, false), roughnessMap: toTexture(rc, false) };
+}
+
+function withMaps(c: HTMLCanvasElement, o: DeriveOptions): PbrMaps {
+  return { map: toTexture(c), ...deriveMaps(c, o) };
+}
+
 /** Seeded RNG so procedural textures are identical on every load. */
 function rng(seed: number): () => number {
   let s = seed >>> 0;
@@ -38,8 +119,9 @@ function speckle(ctx: CanvasRenderingContext2D, w: number, h: number, count: num
 }
 
 /** Asphalt: dark aggregate speckle with faint tyre-polish streaks. One tile = 4 m. */
-export function asphaltTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(512, 512);
+export function asphaltTexture(): PbrMaps {
+  const [c, ctx] = canvas(1024, 1024);
+  ctx.scale(2, 2);
   ctx.fillStyle = '#3a3b3d';
   ctx.fillRect(0, 0, 512, 512);
   speckle(ctx, 512, 512, 26000, ['#2c2d2f', '#46474a', '#505154', '#333436', '#5c5d60'], 2.2, 11);
@@ -59,11 +141,33 @@ export function asphaltTexture(): THREE.CanvasTexture {
     ctx.fillStyle = g;
     ctx.fillRect(x - 50, 0, 100, 512);
   }
-  return toTexture(c);
+  // Patch repairs and hairline cracks, the texture of a well-used Indian road.
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = `rgba(${r() < 0.5 ? '28,28,30' : '70,70,72'},0.35)`;
+    const px = r() * 440;
+    const py = r() * 440;
+    ctx.fillRect(px, py, 30 + r() * 60, 20 + r() * 50);
+  }
+  ctx.strokeStyle = 'rgba(14,14,15,0.55)';
+  ctx.lineWidth = 0.8;
+  for (let i = 0; i < 9; i++) {
+    let x = r() * 512;
+    let y = r() * 512;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let k = 0; k < 10; k++) {
+      x += (r() - 0.5) * 22;
+      y += (r() - 0.3) * 18;
+      ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  return withMaps(c, { normalStrength: 1.6, roughBase: 0.86, roughRange: 0.35 });
 }
 
-export function concreteTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(256, 256);
+export function concreteTexture(): PbrMaps {
+  const [c, ctx] = canvas(512, 512);
+  ctx.scale(2, 2);
   ctx.fillStyle = '#9a968e';
   ctx.fillRect(0, 0, 256, 256);
   speckle(ctx, 256, 256, 6000, ['#8c887f', '#a7a39b', '#918d85', '#b0aca3'], 1.6, 3);
@@ -78,7 +182,18 @@ export function concreteTexture(): THREE.CanvasTexture {
     ctx.lineTo(256, i);
     ctx.stroke();
   }
-  return toTexture(c);
+  // Grime collects along the joints.
+  ctx.strokeStyle = 'rgba(70,66,58,0.18)';
+  ctx.lineWidth = 7;
+  for (let i = 0; i <= 256; i += 128) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 256);
+    ctx.moveTo(0, i);
+    ctx.lineTo(256, i);
+    ctx.stroke();
+  }
+  return withMaps(c, { normalStrength: 2.2, roughBase: 0.9, roughRange: 0.2 });
 }
 
 /** Dry grass and dusty soil, typical of NCR verges. One tile = 24 m. */
@@ -113,8 +228,9 @@ export type FacadeStyle = 'apartment' | 'office' | 'house' | 'industrial';
  * Greyscale facades so per-building vertex colours tint the wall paint, while
  * glass, frames and shadows keep their own tones.
  */
-export function facadeTexture(style: FacadeStyle): THREE.CanvasTexture {
-  const [c, ctx] = canvas(128, 128);
+export function facadeTexture(style: FacadeStyle): PbrMaps {
+  const [c, ctx] = canvas(256, 256);
+  ctx.scale(2, 2);
   const seed = { apartment: 2, office: 3, house: 4, industrial: 5 }[style];
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 128, 128);
@@ -182,11 +298,21 @@ export function facadeTexture(style: FacadeStyle): THREE.CanvasTexture {
     ctx.fillStyle = '#d8d8d8';
     ctx.fillRect(0, 122, 128, 6); // floor slab band
   }
-  return toTexture(c);
+  // Weathering: rain streaks running down from sills and slabs.
+  const wr = rng(seed * 31);
+  for (let i = 0; i < 14; i++) {
+    const x = wr() * 128;
+    const g = ctx.createLinearGradient(0, 80, 0, 128);
+    g.addColorStop(0, 'rgba(60,60,60,0.10)');
+    g.addColorStop(1, 'rgba(60,60,60,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 80 + wr() * 10, 1 + wr() * 2.5, 40);
+  }
+  return withMaps(c, { normalStrength: 2.4, roughBase: style === 'office' ? 0.35 : 0.85, roughRange: 0.3, glass: true });
 }
 
 /** Ground-floor shopfront: rolling shutters, glass and a coloured sign band. One tile = 3.5 m x 3.6 m. */
-export function shopfrontTexture(): THREE.CanvasTexture {
+export function shopfrontTexture(): PbrMaps {
   const [c, ctx] = canvas(512, 128);
   const r = rng(77);
   const signs = ['#c0392b', '#1f6fb2', '#e3a21a', '#2e8b57', '#7d3c98', '#d35400', '#16a085'];
@@ -216,15 +342,68 @@ export function shopfrontTexture(): THREE.CanvasTexture {
       ctx.fillRect(x + 62, 34, 4, 94);
     }
   }
-  return toTexture(c);
+  return withMaps(c, { normalStrength: 1.5, roughBase: 0.6, roughRange: 0.3, glass: true });
 }
 
-export function roofTexture(): THREE.CanvasTexture {
-  const [c, ctx] = canvas(128, 128);
+export function roofTexture(): PbrMaps {
+  const [c, ctx] = canvas(256, 256);
+  ctx.scale(2, 2);
   ctx.fillStyle = '#9b9893';
   ctx.fillRect(0, 0, 128, 128);
   speckle(ctx, 128, 128, 2500, ['#8a8782', '#a6a39e', '#7f7c77'], 2, 8);
-  return toTexture(c);
+  // Damp patches and tar seams on flat concrete roofs.
+  const r = rng(18);
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = 'rgba(70,68,64,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(r() * 128, r() * 128, 6 + r() * 20, 4 + r() * 14, r() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = 'rgba(30,30,30,0.35)';
+  ctx.fillRect(0, 63, 128, 1.5);
+  return withMaps(c, { normalStrength: 1.8, roughBase: 0.92, roughRange: 0.15 });
+}
+
+/**
+ * Leaf cluster card: dozens of small leaves with alpha cut-outs, used on the
+ * crossed cards that make up tree crowns. Greenish-grey so per-tree instance
+ * colours tint it to different species and seasons.
+ */
+export function leafTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(256, 256);
+  ctx.clearRect(0, 0, 256, 256);
+  const r = rng(404);
+  // A few twigs underneath.
+  ctx.strokeStyle = 'rgba(70,58,40,1)';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 5; i++) {
+    ctx.beginPath();
+    ctx.moveTo(128, 250);
+    ctx.quadraticCurveTo(60 + r() * 136, 140 + r() * 40, 20 + r() * 216, 20 + r() * 120);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 170; i++) {
+    // Denser in the middle so the card edge reads as an irregular clump.
+    const a = r() * Math.PI * 2;
+    const d = Math.sqrt(r()) * 112;
+    const x = 128 + Math.cos(a) * d;
+    const y = 128 + Math.sin(a) * d * 0.9;
+    const l = 55 + r() * 45;
+    ctx.fillStyle = `hsl(${78 + r() * 30}, ${18 + r() * 20}%, ${l}%)`;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(r() * Math.PI * 2);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 4 + r() * 4, 9 + r() * 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(-0.5, -8, 1, 16);
+    ctx.restore();
+  }
+  const t = toTexture(c);
+  t.wrapS = THREE.ClampToEdgeWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  return t;
 }
 
 /** Road marking strip: V runs along the road; dashes of 3 m every 9 m. */

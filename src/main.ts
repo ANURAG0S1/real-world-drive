@@ -60,7 +60,7 @@ class App {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: profile.antialias, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, profile.pixelRatioCap));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.95;
+    this.renderer.toneMappingExposure = 0.85;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.globe = new Globe(this.canvas);
@@ -396,7 +396,7 @@ class App {
     const h = this.canvas.clientHeight;
     this.renderer.setSize(w, h, false);
     this.globe.resize(w, h);
-    this.session?.resize(w / Math.max(1, h));
+    this.session?.resize(w, h);
     if (this.mode === 'map') this.sizeBigmap();
   }
 

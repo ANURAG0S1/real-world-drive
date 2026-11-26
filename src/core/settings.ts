@@ -1,3 +1,5 @@
+import type { PostFXLevel } from '../render/PostFX';
+
 export type Quality = 'low' | 'medium' | 'high' | 'ultra';
 export const QUALITIES: readonly Quality[] = ['low', 'medium', 'high', 'ultra'];
 
@@ -8,13 +10,17 @@ export interface QualityProfile {
   readonly antialias: boolean;
   /** People walking the sidewalks around the player. */
   readonly pedestrians: number;
+  /** Post-processing: off, bloom + grade, or ambient occlusion + bloom + grade. */
+  readonly postfx: PostFXLevel;
+  /** Live cube-map reflections on the car; 0 disables, otherwise the refresh interval in frames. */
+  readonly reflectionInterval: number;
 }
 
 export const QUALITY_PROFILES: Readonly<Record<Quality, QualityProfile>> = {
-  low: { pixelRatioCap: 1, shadowMapSize: 0, loadRadius: 1, antialias: false, pedestrians: 30 },
-  medium: { pixelRatioCap: 1.25, shadowMapSize: 1024, loadRadius: 1, antialias: true, pedestrians: 55 },
-  high: { pixelRatioCap: 1.75, shadowMapSize: 2048, loadRadius: 1, antialias: true, pedestrians: 80 },
-  ultra: { pixelRatioCap: 2, shadowMapSize: 4096, loadRadius: 2, antialias: true, pedestrians: 120 },
+  low: { pixelRatioCap: 1, shadowMapSize: 0, loadRadius: 1, antialias: false, pedestrians: 30, postfx: 'off', reflectionInterval: 0 },
+  medium: { pixelRatioCap: 1.25, shadowMapSize: 1024, loadRadius: 1, antialias: true, pedestrians: 55, postfx: 'basic', reflectionInterval: 0 },
+  high: { pixelRatioCap: 1.75, shadowMapSize: 2048, loadRadius: 1, antialias: true, pedestrians: 80, postfx: 'full', reflectionInterval: 8 },
+  ultra: { pixelRatioCap: 2, shadowMapSize: 4096, loadRadius: 2, antialias: true, pedestrians: 120, postfx: 'full', reflectionInterval: 3 },
 };
 
 const KEY = 'rwd.quality';
