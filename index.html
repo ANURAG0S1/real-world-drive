@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Real World Drive</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <canvas id="scene"></canvas>
+
+    <!-- Globe screen -->
+    <section id="globe-ui" class="screen">
+      <header class="brand">
+        <span class="brand-mark">RWD</span>
+        <div>
+          <h1>Real World Drive</h1>
+          <p>Pick any place on Earth. Drive its real streets.</p>
+        </div>
+      </header>
+
+      <div class="panel search-panel">
+        <form id="search-form" autocomplete="off">
+          <label for="search-input" class="label">Search a city, area or landmark</label>
+          <div class="search-row">
+            <input id="search-input" type="search" placeholder="e.g. Greater Noida, Pari Chowk" />
+            <button id="search-btn" type="submit" class="btn">Search</button>
+          </div>
+        </form>
+        <ul id="search-results" class="results"></ul>
+        <p id="search-note" class="note"></p>
+      </div>
+
+      <div id="place-card" class="panel place-card" hidden>
+        <span class="label">Selected location</span>
+        <h2 id="place-name">Greater Noida</h2>
+        <p id="place-detail" class="muted"></p>
+        <p id="place-coords" class="mono"></p>
+        <div class="car-pick">
+          <span class="label">Vehicle</span>
+          <div class="car-chip"><span class="swatch"></span><span id="car-name">Vantage GT</span><span class="muted">· RWD coupe</span></div>
+        </div>
+        <button id="drive-btn" class="btn btn-primary" type="button">Drive here</button>
+      </div>
+
+      <p class="hint">Drag to rotate · Scroll or pinch to zoom · Click the globe to pick a spot</p>
+    </section>
+
+    <!-- Loading -->
+    <section id="loading" class="screen overlay" hidden>
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <h2 id="loading-title">Loading streets</h2>
+        <p id="loading-detail" class="muted">Fetching OpenStreetMap data</p>
+        <button id="loading-cancel" class="btn" type="button">Back to globe</button>
+      </div>
+    </section>
+
+    <!-- Driving HUD -->
+    <section id="hud" class="screen" hidden>
+      <div class="panel hud-location">
+        <span id="hud-place" class="place">Greater Noida</span>
+        <span id="hud-road" class="muted">—</span>
+        <span id="hud-coords" class="mono small">—</span>
+      </div>
+
+      <div class="compass" aria-label="Compass"><div id="compass-strip" class="compass-strip"></div><span class="compass-tick"></span></div>
+
+      <div class="hud-buttons">
+        <button class="btn btn-icon" id="btn-map" type="button" title="Map (M)">Map <kbd>M</kbd></button>
+        <button class="btn btn-icon" id="btn-camera" type="button" title="Camera (C)">Camera <kbd>C</kbd></button>
+        <button class="btn btn-icon" id="btn-lights" type="button" title="Headlights (H)">Lights <kbd>H</kbd></button>
+        <button class="btn btn-icon" id="btn-pause" type="button" title="Menu (Esc)">Menu <kbd>Esc</kbd></button>
+      </div>
+
+      <div class="minimap-wrap panel">
+        <canvas id="minimap" width="440" height="440"></canvas>
+        <span class="minimap-n">N</span>
+      </div>
+
+      <div class="gauge panel">
+        <svg viewBox="0 0 200 200" class="gauge-svg" aria-hidden="true">
+          <path id="rpm-track" class="arc-track" d="" />
+          <path id="rpm-arc" class="arc-rpm" d="" />
+          <path id="rpm-red" class="arc-red" d="" />
+          <g id="gauge-ticks"></g>
+        </svg>
+        <div class="gauge-center">
+          <span id="speed" class="speed">0</span>
+          <span class="unit">km/h</span>
+        </div>
+        <div class="gauge-foot">
+          <span class="gear-box"><span class="label">Gear</span><span id="gear" class="gear">1</span></span>
+          <span class="gear-box"><span class="label">RPM</span><span id="rpm" class="mono">900</span></span>
+        </div>
+      </div>
+
+      <div id="controls-help" class="panel controls-help">
+        <span class="label">Controls</span>
+        <ul>
+          <li><kbd>W</kbd><kbd>↑</kbd> Accelerate</li>
+          <li><kbd>S</kbd><kbd>↓</kbd> Brake / reverse</li>
+          <li><kbd>A</kbd><kbd>D</kbd> Steer</li>
+          <li><kbd>Space</kbd> Handbrake</li>
+          <li><kbd>C</kbd> Camera · <kbd>H</kbd> Lights</li>
+          <li><kbd>R</kbd> Reset · <kbd>M</kbd> Map · <kbd>Esc</kbd> Menu</li>
+        </ul>
+      </div>
+
+      <div id="stream-status" class="stream-status small muted"></div>
+
+      <div class="touch" id="touch">
+        <div class="touch-steer">
+          <button type="button" data-touch="left" aria-label="Steer left">◀</button>
+          <button type="button" data-touch="right" aria-label="Steer right">▶</button>
+        </div>
+        <div class="touch-pedals">
+          <button type="button" data-touch="handbrake" class="hb" aria-label="Handbrake">HB</button>
+          <button type="button" data-touch="brake" aria-label="Brake">BRK</button>
+          <button type="button" data-touch="throttle" class="gas" aria-label="Accelerate">GAS</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Full map -->
+    <section id="bigmap" class="screen overlay" hidden>
+      <div class="bigmap-frame panel">
+        <div class="bigmap-head">
+          <span class="label">Map · loaded area</span>
+          <div class="bigmap-zoom">
+            <button id="map-zoom-out" class="btn" type="button" aria-label="Zoom out">−</button>
+            <button id="map-zoom-in" class="btn" type="button" aria-label="Zoom in">+</button>
+            <button id="map-close" class="btn" type="button">Close <kbd>M</kbd></button>
+          </div>
+        </div>
+        <canvas id="bigmap-canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- Pause -->
+    <section id="pause" class="screen overlay" hidden>
+      <div class="panel pause-box">
+        <h2>Paused</h2>
+        <button id="pause-resume" class="btn btn-primary" type="button">Resume</button>
+        <button id="pause-reset" class="btn" type="button">Reset car to road</button>
+        <button id="pause-sound" class="btn" type="button">Sound: on</button>
+        <button id="pause-quality" class="btn" type="button">Graphics: High</button>
+        <button id="pause-globe" class="btn" type="button">Back to globe</button>
+      </div>
+    </section>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <footer class="attribution">
+      Map data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors (ODbL) ·
+      Search by <a href="https://nominatim.org" target="_blank" rel="noopener">Nominatim</a> · Borders: Natural Earth
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
