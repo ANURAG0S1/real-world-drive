@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { asphaltTexture, concreteTexture, dashTexture, facadeTexture, groundTexture, roofTexture, waterTexture } from './textures';
+import { asphaltTexture, concreteTexture, dashTexture, facadeTexture, groundTexture, roofTexture, shopfrontTexture, waterTexture, type FacadeStyle } from './textures';
 
 /** Shared materials: created once, reused by every chunk so draw calls batch well. */
 export interface WorldMaterials {
@@ -10,7 +10,10 @@ export interface WorldMaterials {
   readonly markingWhite: THREE.MeshStandardMaterial;
   readonly markingYellow: THREE.MeshStandardMaterial;
   readonly markingSolid: THREE.MeshStandardMaterial;
-  readonly facade: THREE.MeshStandardMaterial;
+  readonly facades: Readonly<Record<FacadeStyle, THREE.MeshStandardMaterial>>;
+  readonly shopfront: THREE.MeshStandardMaterial;
+  readonly parapet: THREE.MeshStandardMaterial;
+  readonly tank: THREE.MeshStandardMaterial;
   readonly roof: THREE.MeshStandardMaterial;
   readonly park: THREE.MeshStandardMaterial;
   readonly water: THREE.MeshStandardMaterial;
@@ -45,7 +48,15 @@ export function createWorldMaterials(): WorldMaterials {
     ),
     markingYellow: layered(new THREE.MeshStandardMaterial({ map: dash, color: 0xf3c13a, alphaTest: 0.5, roughness: 0.6 }), 4),
     markingSolid: layered(new THREE.MeshStandardMaterial({ color: 0xf0f0e8, roughness: 0.6 }), 4),
-    facade: new THREE.MeshStandardMaterial({ map: facadeTexture(), vertexColors: true, roughness: 0.82, metalness: 0.02 }),
+    facades: {
+      apartment: new THREE.MeshStandardMaterial({ map: facadeTexture('apartment'), vertexColors: true, roughness: 0.82, metalness: 0.02 }),
+      office: new THREE.MeshStandardMaterial({ map: facadeTexture('office'), vertexColors: true, roughness: 0.18, metalness: 0.55, envMapIntensity: 1.3 }),
+      house: new THREE.MeshStandardMaterial({ map: facadeTexture('house'), vertexColors: true, roughness: 0.88, metalness: 0 }),
+      industrial: new THREE.MeshStandardMaterial({ map: facadeTexture('industrial'), vertexColors: true, roughness: 0.75, metalness: 0.15 }),
+    },
+    shopfront: new THREE.MeshStandardMaterial({ map: shopfrontTexture(), roughness: 0.6, metalness: 0.05 }),
+    parapet: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide }),
+    tank: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.55 }),
     roof: new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.95 }),
     park: layered(new THREE.MeshStandardMaterial({ map: ground, color: 0x9fc47a, roughness: 1 }), 1),
     water: layered(new THREE.MeshStandardMaterial({ map: waterTexture(), roughness: 0.08, metalness: 0.3 }), 1),

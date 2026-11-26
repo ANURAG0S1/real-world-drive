@@ -88,7 +88,8 @@ export class Environment {
     // Ground moves in 24 m steps (one texture tile) so the texture never swims.
     const gx = Math.round(pos.x / 24) * 24;
     const gz = Math.round(pos.z / 24) * 24;
-    this.ground.position.set(gx, 0, gz);
+    // Far ground under the streamed terrain patches; only visible past loaded chunks.
+    this.ground.position.set(gx, pos.y - 6, gz);
   }
 
   dispose(): void {

@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import { ChunkSource, type ChunkOrigin } from '../data/chunkSource';
 import { parseElements } from '../data/osmParse';
-import { chunkKey, chunkOf, chunksAround, type ChunkCoord } from '../geo/chunks';
+import { chunkBBox, chunkKey, chunkOf, chunksAround, type ChunkCoord } from '../geo/chunks';
 import type { LocalProjection } from '../geo/projection';
+import type { Terrain } from '../geo/terrain';
 import type { LocalXZ } from '../geo/types';
 import { ChunkBuilder, type LocalRoad } from './ChunkBuilder';
+import type { Ground } from './Ground';
 import type { WorldMaterials } from './materials';
 
 type FeatureKind = 'road' | 'building' | 'area' | 'point';
@@ -15,7 +17,7 @@ interface LoadedChunk {
   readonly coord: ChunkCoord;
   readonly group: THREE.Group;
   readonly roads: LocalRoad[];
-  readonly collider: RAPIER.Collider | null;
+  readonly colliders: RAPIER.Collider[];
   readonly owned: string[];
   readonly origin: ChunkOrigin;
   readonly buildings: number;
@@ -57,8 +59,10 @@ export class World {
     private readonly source: ChunkSource,
     private readonly physics: RAPIER.World,
     private readonly rapier: typeof RAPIER,
+    private readonly terrain: Terrain,
+    ground: Ground,
   ) {
-    this.builder = new ChunkBuilder(proj, mats);
+    this.builder = new ChunkBuilder(proj, mats, ground);
   }
 
   /** Loads the ring around a local position. Resolves when the centre chunk is ready (or failed). */
@@ -147,7 +151,12 @@ export class World {
     const ctrl = new AbortController();
     this.pending.set(key, ctrl);
     try {
-      const { elements, origin } = await this.source.load(c, ctrl.signal);
+      const bbox = chunkBBox(c);
+      const [{ elements, origin }] = await Promise.all([
+        this.source.load(c, ctrl.signal),
+        // Elevation for the chunk plus a margin, so edge vertices never sample a missing tile.
+        this.terrain.ensure({ south: bbox.south - 0.002, north: bbox.north + 0.002, west: bbox.west - 0.002, east: bbox.east + 0.002 }),
+      ]);
       if (this.disposed || ctrl.signal.aborted) return;
       // Yield a frame so streaming never blocks the render loop on arrival.
       await new Promise((r) => requestAnimationFrame(r));
@@ -161,15 +170,25 @@ export class World {
         owned.push(fk);
         return true;
       };
-      const built = this.builder.build(features, claim);
-      let collider: RAPIER.Collider | null = null;
+      const nw = this.proj.toLocal(bbox.north, bbox.west);
+      const se = this.proj.toLocal(bbox.south, bbox.east);
+      const built = this.builder.build(features, { x0: nw.x, z0: nw.z, x1: se.x, z1: se.z }, claim);
+      const colliders: RAPIER.Collider[] = [];
+      const t = built.terrain;
+      colliders.push(
+        this.physics.createCollider(
+          this.rapier.ColliderDesc.heightfield(t.nz, t.nx, t.heights, { x: t.size.x, y: 1, z: t.size.y })
+            .setTranslation(t.center.x, 0, t.center.z)
+            .setFriction(1.0),
+        ),
+      );
       if (built.collider) {
         const desc = this.rapier.ColliderDesc.trimesh(built.collider.vertices, built.collider.indices).setFriction(0.4);
-        collider = this.physics.createCollider(desc);
+        colliders.push(this.physics.createCollider(desc));
       }
       this.root.add(built.group);
       this.buildingCount += built.buildingCount;
-      this.chunks.set(key, { key, coord: c, group: built.group, roads: built.roads, collider, owned, origin, buildings: built.buildingCount });
+      this.chunks.set(key, { key, coord: c, group: built.group, roads: built.roads, colliders, owned, origin, buildings: built.buildingCount });
       this.failed.delete(key);
       this.onChunkLoaded?.(key, origin);
     } catch (err) {
@@ -189,7 +208,7 @@ export class World {
     ch.group.traverse((o) => {
       if (o instanceof THREE.Mesh || o instanceof THREE.InstancedMesh) o.geometry.dispose();
     });
-    if (ch.collider) this.physics.removeCollider(ch.collider, false);
+    for (const col of ch.colliders) this.physics.removeCollider(col, false);
     this.buildingCount -= ch.buildings;
     for (const fk of ch.owned) if (this.owners.get(fk) === key) this.owners.delete(fk);
     this.chunks.delete(key);

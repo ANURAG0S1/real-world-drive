@@ -106,33 +106,116 @@ export function waterTexture(): THREE.CanvasTexture {
   return toTexture(c);
 }
 
+/** Building facade styles; each texture tile is one window bay (3.5 m) by one storey (3.3 m). */
+export type FacadeStyle = 'apartment' | 'office' | 'house' | 'industrial';
+
 /**
- * Facade: one tile = one window bay (3.5 m) by one storey (3.3 m).
- * Greyscale so per-building vertex colours tint the wall paint.
+ * Greyscale facades so per-building vertex colours tint the wall paint, while
+ * glass, frames and shadows keep their own tones.
  */
-export function facadeTexture(): THREE.CanvasTexture {
+export function facadeTexture(style: FacadeStyle): THREE.CanvasTexture {
   const [c, ctx] = canvas(128, 128);
+  const seed = { apartment: 2, office: 3, house: 4, industrial: 5 }[style];
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 128, 128);
-  speckle(ctx, 128, 128, 900, ['#f0f0f0', '#e6e6e6', '#fafafa'], 2, 2);
-  // Window with frame, sill and a hint of reflection.
-  ctx.fillStyle = '#d0d0d0';
-  ctx.fillRect(28, 30, 72, 62);
-  const g = ctx.createLinearGradient(32, 34, 96, 88);
-  g.addColorStop(0, '#3d4a56');
-  g.addColorStop(0.55, '#26303a');
-  g.addColorStop(1, '#4a5967');
-  ctx.fillStyle = g;
-  ctx.fillRect(32, 34, 64, 54);
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(32, 34, 64, 8);
-  ctx.fillStyle = '#c4c4c4';
-  ctx.fillRect(62, 34, 4, 54);
-  ctx.fillStyle = '#bdbdbd';
-  ctx.fillRect(24, 92, 80, 5);
-  // Floor slab band.
-  ctx.fillStyle = '#d8d8d8';
-  ctx.fillRect(0, 118, 128, 10);
+  speckle(ctx, 128, 128, 900, ['#f0f0f0', '#e6e6e6', '#fafafa'], 2, seed);
+  const glass = (x: number, y: number, w: number, h: number, dark = '#26303a', light = '#4a5967'): void => {
+    const g = ctx.createLinearGradient(x, y, x + w, y + h);
+    g.addColorStop(0, light);
+    g.addColorStop(0.55, dark);
+    g.addColorStop(1, light);
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(x, y, w, Math.max(2, h * 0.12));
+  };
+  if (style === 'apartment') {
+    // Window over a balcony slab with a railing, the classic NCR apartment bay.
+    ctx.fillStyle = '#d4d4d4';
+    ctx.fillRect(18, 18, 92, 64);
+    glass(22, 22, 84, 56);
+    ctx.fillStyle = '#c8c8c8';
+    ctx.fillRect(62, 22, 4, 56);
+    ctx.fillStyle = '#9a9a9a';
+    ctx.fillRect(8, 84, 112, 6); // balcony slab edge
+    ctx.fillStyle = 'rgba(70,70,70,0.75)';
+    for (let x = 10; x < 120; x += 7) ctx.fillRect(x, 90, 2, 20);
+    ctx.fillRect(8, 90, 112, 3);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(8, 110, 112, 8); // shadow under balcony
+  } else if (style === 'office') {
+    // Curtain wall: full-height glass with mullions and a spandrel band.
+    glass(0, 0, 128, 128, '#1d3a4a', '#5b8197');
+    ctx.fillStyle = '#b8c2c8';
+    ctx.fillRect(0, 0, 4, 128);
+    ctx.fillRect(62, 0, 3, 128);
+    ctx.fillStyle = '#2a3a44';
+    ctx.fillRect(0, 104, 128, 24);
+    ctx.fillStyle = '#c9d1d6';
+    ctx.fillRect(0, 102, 128, 3);
+  } else if (style === 'house') {
+    // Smaller window with a steel security grille and a sunshade above.
+    ctx.fillStyle = '#c9c9c9';
+    ctx.fillRect(36, 36, 56, 52);
+    glass(40, 40, 48, 44);
+    ctx.strokeStyle = 'rgba(40,40,40,0.8)';
+    ctx.lineWidth = 2;
+    for (let x = 46; x < 88; x += 8) {
+      ctx.beginPath();
+      ctx.moveTo(x, 40);
+      ctx.lineTo(x, 84);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#a8a8a8';
+    ctx.fillRect(30, 26, 68, 8); // chajja sunshade
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.fillRect(30, 34, 68, 5);
+  } else {
+    // Industrial: plain wall, high strip window, ribbed cladding hint.
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    for (let x = 0; x < 128; x += 8) ctx.fillRect(x, 0, 3, 128);
+    glass(10, 14, 108, 22, '#2d3740', '#55636f');
+    ctx.fillStyle = '#bdbdbd';
+    ctx.fillRect(0, 120, 128, 8);
+  }
+  if (style !== 'office') {
+    ctx.fillStyle = '#d8d8d8';
+    ctx.fillRect(0, 122, 128, 6); // floor slab band
+  }
+  return toTexture(c);
+}
+
+/** Ground-floor shopfront: rolling shutters, glass and a coloured sign band. One tile = 3.5 m x 3.6 m. */
+export function shopfrontTexture(): THREE.CanvasTexture {
+  const [c, ctx] = canvas(512, 128);
+  const r = rng(77);
+  const signs = ['#c0392b', '#1f6fb2', '#e3a21a', '#2e8b57', '#7d3c98', '#d35400', '#16a085'];
+  for (let i = 0; i < 4; i++) {
+    const x = i * 128;
+    ctx.fillStyle = '#e6e2da';
+    ctx.fillRect(x, 0, 128, 128);
+    ctx.fillStyle = signs[Math.floor(r() * signs.length)];
+    ctx.fillRect(x + 4, 6, 120, 24);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    for (let k = 0; k < 5; k++) ctx.fillRect(x + 14 + k * 20 + r() * 4, 14, 10 + r() * 6, 8);
+    if (r() < 0.45) {
+      // Shutter down.
+      ctx.fillStyle = '#9ea3a8';
+      ctx.fillRect(x + 8, 34, 112, 94);
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      for (let y = 36; y < 128; y += 5) ctx.fillRect(x + 8, y, 112, 2);
+    } else {
+      const g = ctx.createLinearGradient(x, 34, x, 128);
+      g.addColorStop(0, '#3b4650');
+      g.addColorStop(1, '#6d6150');
+      ctx.fillStyle = g;
+      ctx.fillRect(x + 8, 34, 112, 94);
+      ctx.fillStyle = 'rgba(255,230,170,0.35)';
+      ctx.fillRect(x + 14, 44, 100, 30);
+      ctx.fillStyle = '#5a5a5a';
+      ctx.fillRect(x + 62, 34, 4, 94);
+    }
+  }
   return toTexture(c);
 }
 

@@ -55,6 +55,8 @@ On the globe: drag to rotate, scroll to zoom, click to drop a pin, or search.
   VITE_OVERPASS_URL=http://localhost:12345/api/interpreter npm run dev
   ```
 
+* **Elevation** comes from the free [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (Terrarium PNGs, zoom 14, about 9 m per pixel). The raw data includes rooftops and tree canopies, so each tile is median-filtered and blurred into drivable ground. Roads, buildings, trees and the physics heightfield all sample the same 8 m grid (`src/world/Ground.ts`), so the car drives on exactly what you see. Tiles for the Greater Noida pack are bundled in `public/terrain/`; elsewhere they stream from S3. Set `VITE_TERRAIN_URL` to use another Terrarium source.
+
 Map data © OpenStreetMap contributors, available under the [ODbL](https://www.openstreetmap.org/copyright). The attribution is shown on every screen.
 
 ## Adding a city
@@ -100,6 +102,11 @@ Vehicles (pick one on the globe screen, defined in `src/vehicle/specs.ts`):
 Each has its own body shape, suspension, gearbox and engine note, a right-hand-drive
 cockpit with a working steering wheel, gear-shift and brake sounds.
 
-Not yet: terrain elevation and real bridge heights, traffic AI, weather and day/night, destination routing, game modes, mobile
+Buildings pick one of four facade styles (apartment blocks with balconies, glass
+offices, houses with window grilles, industrial sheds) from their OSM tags and
+height, many get shops on the ground floor, and homes carry rooftop water tanks
+and stair rooms.
+
+Not yet: real bridge and flyover heights, traffic AI, weather and day/night, destination routing, game modes, mobile
 controls tuning. The code is organised so each of these is an addition in its
 own folder rather than a rewrite.

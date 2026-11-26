@@ -10,6 +10,28 @@ export function simplify(points: LocalXZ[], minDist = 0.5): LocalXZ[] {
   return out;
 }
 
+/** Inserts points so no segment is longer than `maxSeg` metres, letting ribbons follow terrain. */
+export function densify(points: readonly LocalXZ[], maxSeg: number): LocalXZ[] {
+  const out: LocalXZ[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (i > 0) {
+      const a = points[i - 1];
+      const len = Math.hypot(p.x - a.x, p.z - a.z);
+      const n = Math.floor(len / maxSeg);
+      for (let k = 1; k <= n; k++) {
+        const t = k / (n + 1);
+        out.push({ x: a.x + (p.x - a.x) * t, z: a.z + (p.z - a.z) * t });
+      }
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/** Ground height lookup in local metres. */
+export type HeightFn = (x: number, z: number) => number;
+
 export function polylineLength(points: readonly LocalXZ[]): number {
   let len = 0;
   for (let i = 1; i < points.length; i++) len += Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
@@ -88,7 +110,8 @@ export function appendRibbon(
   out: RibbonBuffers,
   points: readonly LocalXZ[],
   width: number,
-  y: number,
+  yAt: HeightFn,
+  yOffset: number,
   vMetersPerTile: number,
   uRepeat = 1,
 ): void {
@@ -101,7 +124,11 @@ export function appendRibbon(
     if (i > 0) dist += Math.hypot(points[i].x - points[i - 1].x, points[i].z - points[i - 1].z);
     const p = points[i];
     const n = normals[i];
-    out.positions.push(p.x + n.x * half, y, p.z + n.z * half, p.x - n.x * half, y, p.z - n.z * half);
+    const lx = p.x + n.x * half;
+    const lz = p.z + n.z * half;
+    const rx = p.x - n.x * half;
+    const rz = p.z - n.z * half;
+    out.positions.push(lx, yAt(lx, lz) + yOffset, lz, rx, yAt(rx, rz) + yOffset, rz);
     out.normals.push(0, 1, 0, 0, 1, 0);
     const v = dist / vMetersPerTile;
     out.uvs.push(0, v, uRepeat, v);

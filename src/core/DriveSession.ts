@@ -3,11 +3,13 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import { ChaseCamera } from '../camera/ChaseCamera';
 import type { ChunkSource } from '../data/chunkSource';
 import { LocalProjection } from '../geo/projection';
+import { Terrain } from '../geo/terrain';
 import type { LatLon, LocalXZ } from '../geo/types';
 import { Car } from '../vehicle/Car';
 import type { DriveInput } from '../vehicle/input';
 import type { VehicleSpec } from '../vehicle/specs';
 import { Environment } from '../world/Environment';
+import { Ground } from '../world/Ground';
 import { createWorldMaterials, type WorldMaterials } from '../world/materials';
 import { World } from '../world/World';
 import type { QualityProfile } from './settings';
@@ -33,6 +35,8 @@ export class DriveSession {
   readonly proj: LocalProjection;
   readonly chase: ChaseCamera;
   readonly world: World;
+  readonly terrain: Terrain;
+  readonly ground: Ground;
   car!: Car;
   private readonly physics: RAPIER.World;
   private readonly env: Environment;
@@ -48,17 +52,19 @@ export class DriveSession {
     renderer: THREE.WebGLRenderer,
     source: ChunkSource,
     aspect: number,
+    terrainBase: string,
   ) {
     this.proj = new LocalProjection(opts.origin);
     this.physics = new rapier.World({ x: 0, y: -9.81, z: 0 });
     this.physics.timestep = FIXED_DT;
-    // Ground: one big static slab, so the car can drive off-road beyond the map.
-    const ground = rapier.ColliderDesc.cuboid(20000, 1, 20000).setTranslation(0, -1, 0).setFriction(1.0);
-    this.physics.createCollider(ground);
+    // Safety net far below the terrain; chunk heightfields are the real ground.
+    this.physics.createCollider(rapier.ColliderDesc.cuboid(20000, 1, 20000).setTranslation(0, -200, 0));
+    this.terrain = new Terrain(terrainBase);
+    this.ground = new Ground(this.proj, this.terrain);
 
     sharedMaterials ??= createWorldMaterials();
     this.env = new Environment(this.scene, renderer, sharedMaterials, opts.quality.shadowMapSize);
-    this.world = new World(this.proj, sharedMaterials, source, this.physics, rapier);
+    this.world = new World(this.proj, sharedMaterials, source, this.physics, rapier, this.terrain, this.ground);
     this.world.loadRadius = opts.quality.loadRadius;
     this.world.unloadRadius = opts.quality.loadRadius + 1;
     this.scene.add(this.world.root);
@@ -67,13 +73,14 @@ export class DriveSession {
 
   /** Loads the first chunk and spawns the car on the nearest real road. */
   async start(): Promise<{ onRoad: boolean; roadName: string | null }> {
+    await this.terrain.init(this.opts.origin);
     await this.world.update({ x: 0, z: 0 });
     this.car = new Car(this.opts.vehicle, this.physics, this.rapier, this.scene);
     this.chase.cockpitEye.copy(this.car.model.driverEye).add(this.car.model.body.position);
     const spawn = this.world.nearestRoadPoint({ x: 0, z: 0 }, 1500);
     const heading = spawn ? spawn.heading : (this.opts.headingDeg * Math.PI) / 180;
     const p = spawn ? spawn.point : { x: 0, z: 0 };
-    this.car.place(p.x, 1.0, p.z, heading);
+    this.car.place(p.x, this.ground.heightAt(p.x, p.z) + 1.0, p.z, heading);
     this.snapPrev();
     this.car.syncVisuals(1, this.prev);
     this.chase.snap();
@@ -86,8 +93,8 @@ export class DriveSession {
   resetCar(): void {
     const t = this.car.body.translation();
     const spawn = this.world.nearestRoadPoint({ x: t.x, z: t.z }, 2000);
-    if (spawn) this.car.place(spawn.point.x, 1.0, spawn.point.z, spawn.heading);
-    else this.car.place(t.x, 1.5, t.z, this.car.heading());
+    if (spawn) this.car.place(spawn.point.x, this.ground.heightAt(spawn.point.x, spawn.point.z) + 1.0, spawn.point.z, spawn.heading);
+    else this.car.place(t.x, this.ground.heightAt(t.x, t.z) + 1.5, t.z, this.car.heading());
     this.snapPrev();
     this.chase.snap();
   }
@@ -120,7 +127,8 @@ export class DriveSession {
         steps++;
       }
       if (steps === 5) this.accumulator = 0;
-      if (this.car.body.translation().y < -20) this.resetCar();
+      const t = this.car.body.translation();
+      if (t.y < this.ground.heightAt(t.x, t.z) - 15) this.resetCar();
     }
     this.car.syncVisuals(simulate ? this.accumulator / FIXED_DT : 1, this.prev);
 

@@ -26,6 +26,7 @@ interface Selection {
 }
 
 const PACK_BASE = `${import.meta.env.BASE_URL}packs/`;
+const TERRAIN_BASE = `${import.meta.env.BASE_URL}terrain/`;
 
 class App {
   private readonly canvas = $('scene') as HTMLCanvasElement;
@@ -269,6 +270,7 @@ class App {
         this.renderer,
         this.source,
         this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight),
+        TERRAIN_BASE,
       );
       try {
         const r = await session.start();
