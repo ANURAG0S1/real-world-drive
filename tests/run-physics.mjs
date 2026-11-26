@@ -6,5 +6,5 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const outfile = join(mkdtempSync(join(tmpdir(), 'rwd-')), 'physics.mjs');
-await build({ entryPoints: ['tests/physics.sim.ts'], bundle: true, platform: 'node', format: 'esm', outfile, logLevel: 'error' });
+await build({ entryPoints: [process.argv[2] ?? 'tests/physics.sim.ts'], bundle: true, platform: 'node', format: 'esm', outfile, logLevel: 'error' });
 await import(pathToFileURL(outfile).href);

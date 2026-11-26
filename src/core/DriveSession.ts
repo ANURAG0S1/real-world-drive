@@ -10,6 +10,7 @@ import type { DriveInput } from '../vehicle/input';
 import type { VehicleSpec } from '../vehicle/specs';
 import { Environment } from '../world/Environment';
 import { Ground } from '../world/Ground';
+import { Pedestrians } from '../world/Pedestrians';
 import { createWorldMaterials, type WorldMaterials } from '../world/materials';
 import { World } from '../world/World';
 import type { QualityProfile } from './settings';
@@ -37,6 +38,7 @@ export class DriveSession {
   readonly world: World;
   readonly terrain: Terrain;
   readonly ground: Ground;
+  readonly pedestrians: Pedestrians;
   car!: Car;
   private readonly physics: RAPIER.World;
   private readonly env: Environment;
@@ -68,6 +70,13 @@ export class DriveSession {
     this.world.loadRadius = opts.quality.loadRadius;
     this.world.unloadRadius = opts.quality.loadRadius + 1;
     this.scene.add(this.world.root);
+    this.pedestrians = new Pedestrians(
+      opts.quality.pedestrians,
+      () => this.world.roads(),
+      (x, z) => this.ground.heightAt(x, z),
+      opts.quality.shadowMapSize > 0,
+    );
+    this.scene.add(this.pedestrians.root);
     this.chase = new ChaseCamera(aspect);
   }
 
@@ -144,6 +153,19 @@ export class DriveSession {
       cam.lookAt(root.position.clone().add(new THREE.Vector3(0, 1, 0)));
     }
     this.env.follow(root.position);
+    // Runs during the fly-down too, so the streets are already busy when driving starts.
+    if (simulate) {
+      const he = this.car.spec.halfExtents;
+      this.pedestrians.update(dt, {
+        x: root.position.x,
+        y: root.position.y,
+        z: root.position.z,
+        heading: this.car.heading(),
+        speed: this.car.speed(),
+        halfWidth: he[0],
+        halfLength: he[2],
+      });
+    }
 
     this.streamTimer -= dt;
     if (this.streamTimer <= 0) {
@@ -162,6 +184,7 @@ export class DriveSession {
 
   dispose(): void {
     this.world.dispose();
+    this.pedestrians.dispose();
     this.car?.dispose(this.scene);
     this.env.dispose();
     this.physics.free();

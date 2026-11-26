@@ -42,6 +42,23 @@ export class EngineAudio {
     thunk.stop(t + 0.12);
   }
 
+  /** A dull body thump when the car clips a pedestrian; louder at speed. */
+  bump(kmh: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || this.muted) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(95, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + 0.16);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(Math.min(0.5, 0.12 + kmh / 120), t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.25);
+  }
+
   /** Safe to call repeatedly; only the first call (inside a user gesture) creates the graph. */
   start(): void {
     if (this.ctx) {

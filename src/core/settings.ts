@@ -6,13 +6,15 @@ export interface QualityProfile {
   readonly shadowMapSize: number; // 0 disables shadows
   readonly loadRadius: number; // chunks around the player
   readonly antialias: boolean;
+  /** People walking the sidewalks around the player. */
+  readonly pedestrians: number;
 }
 
 export const QUALITY_PROFILES: Readonly<Record<Quality, QualityProfile>> = {
-  low: { pixelRatioCap: 1, shadowMapSize: 0, loadRadius: 1, antialias: false },
-  medium: { pixelRatioCap: 1.25, shadowMapSize: 1024, loadRadius: 1, antialias: true },
-  high: { pixelRatioCap: 1.75, shadowMapSize: 2048, loadRadius: 1, antialias: true },
-  ultra: { pixelRatioCap: 2, shadowMapSize: 4096, loadRadius: 2, antialias: true },
+  low: { pixelRatioCap: 1, shadowMapSize: 0, loadRadius: 1, antialias: false, pedestrians: 30 },
+  medium: { pixelRatioCap: 1.25, shadowMapSize: 1024, loadRadius: 1, antialias: true, pedestrians: 55 },
+  high: { pixelRatioCap: 1.75, shadowMapSize: 2048, loadRadius: 1, antialias: true, pedestrians: 80 },
+  ultra: { pixelRatioCap: 2, shadowMapSize: 4096, loadRadius: 2, antialias: true, pedestrians: 120 },
 };
 
 const KEY = 'rwd.quality';

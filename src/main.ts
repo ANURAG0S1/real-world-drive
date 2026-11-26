@@ -301,6 +301,7 @@ class App {
           this.session = session;
           this.hud.configure(session.car.spec.redlineRpm);
           this.audio.configure(session.car.spec.firingPerRev);
+          session.pedestrians.onHit = (kmh) => this.audio.bump(kmh);
           this.lastGear = '';
           this.setMode('driving');
           const st = session.world.status();

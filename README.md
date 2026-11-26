@@ -25,6 +25,7 @@ Other scripts:
 | `npm run build:artifact` | Builds a single-file page into `dist-artifact/` (used for the hosted demo) |
 | `npm run typecheck` | TypeScript only |
 | `npm run test:physics` | Headless handling test: 0-100, top speed, braking, cornering |
+| `npm run test:peds` | Headless crowd test: people stay on sidewalks, dodge, fall and get up |
 
 No API keys are needed. All map data comes from free OpenStreetMap services.
 
@@ -58,6 +59,10 @@ On the globe: drag to rotate, scroll to zoom, click to drop a pin, or search.
 * **Elevation** comes from the free [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (Terrarium PNGs, zoom 14, about 9 m per pixel). The raw data includes rooftops and tree canopies, so each tile is median-filtered and blurred into drivable ground. Roads, buildings, trees and the physics heightfield all sample the same 8 m grid (`src/world/Ground.ts`), so the car drives on exactly what you see. Tiles for the Greater Noida pack are bundled in `public/terrain/`; elsewhere they stream from S3. Set `VITE_TERRAIN_URL` to use another Terrarium source.
 
 Map data © OpenStreetMap contributors, available under the [ODbL](https://www.openstreetmap.org/copyright). The attribution is shown on every screen.
+
+## Pedestrians
+
+People walk the sidewalks of streets that have them (residential and up) and the middle of footpaths, around the player only: they spawn 35 to 150 m away and are removed past 190 m. They turn onto connecting streets at road ends, stop now and then, and sometimes cross when the car is more than 45 m away. A car heading at someone makes them jump aside; a hit throws them over, and after a few seconds they get back up. The car is not slowed. Each person has random skin, hair, clothing (shirts, kurtas, long dresses) and height, drawn with one instanced mesh per body part, so the whole crowd costs eight draw calls. Crowd size follows the quality setting: 30, 55, 80 or 120. Code: `src/world/Pedestrians.ts`.
 
 ## Adding a city
 
